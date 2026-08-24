@@ -44,6 +44,12 @@ only, in memory, capped, and is never written to disk. See
 [`crates/guards`](crates/guards/src/lib.rs), which exists as its own crate so
 this claim is one auditable file.
 
+## Download / Releases
+
+**We do not compile the `.exe` files on our local machines.** Every release provided on the [Releases](https://github.com/AlperTuncOrtak/AltShift/releases) page is built entirely in the open by GitHub Actions. You can inspect the [build logs](https://github.com/AlperTuncOrtak/AltShift/actions) for any version to verify exactly which source code produced the installer.
+
+For a program that reads your keystrokes, knowing exactly where the binary came from is non-negotiable.
+
 ## Scope
 
 Different alphabets only: Cyrillic ↔ Latin first, then Greek, Arabic, Hebrew,
