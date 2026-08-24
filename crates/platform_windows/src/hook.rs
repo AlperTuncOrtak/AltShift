@@ -3,8 +3,12 @@ use std::sync::Mutex;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT,
 };
-use windows::Win32::UI::WindowsAndMessaging::{CallNextHookEx, KBDLLHOOKSTRUCT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, GetMessageW, 
+    WH_KEYBOARD_LL, HHOOK, KBDLLHOOKSTRUCT, MSG,
+};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use crate::injector::ALTSHIFT_MAGIC_INFO;
 
 /// Enjeksiyon sırasında (düzeltme yapılırken) basılan tuşların tutulduğu tampon.
@@ -81,4 +85,32 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     // Normal işleyiş: Burada motor (engine) çağrılacak ve gerekirse engellenecek.
     // Şimdilik pas geçiyoruz.
     CallNextHookEx(None, n_code, w_param, l_param)
+}
+
+/// Hook'u sisteme kaydeder ve Windows mesaj döngüsünü başlatır.
+/// Bu fonksiyon çağrıldığında mevcut thread sonsuz bir döngüye girer (bloklar).
+/// Bu nedenle ayrı bir thread içinde çalıştırılmalıdır.
+pub fn run_hook_loop() -> Result<(), String> {
+    unsafe {
+        let h_instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
+
+        let hook_id = SetWindowsHookExW(
+            WH_KEYBOARD_LL,
+            Some(keyboard_hook_proc),
+            h_instance,
+            0,
+        ).map_err(|e| e.to_string())?;
+
+        // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.
+        let mut msg = MSG::default();
+        while GetMessageW(&mut msg, None, 0, 0).into() {
+            // WH_KEYBOARD_LL hook'ları için TranslateMessage / DispatchMessage zorunlu değildir,
+            // sadece mesaj kuyruğunu boşaltmak (GetMessage) hook'un canlı kalmasını sağlar.
+        }
+
+        // Döngü kırılırsa hook'u kaldır
+        let _ = UnhookWindowsHookEx(hook_id);
+    }
+    
+    Ok(())
 }
