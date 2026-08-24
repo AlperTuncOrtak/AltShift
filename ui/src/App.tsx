@@ -30,12 +30,21 @@ import {
 import { cn } from "@/lib/utils";
 import {
   Keyboard,
-  Settings,
+  Settings as SettingsIcon,
   ShieldOff,
   BarChart3,
   Plus,
   Trash2,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useCallback } from "react";
+
+type AppSettings = {
+  enabled: boolean;
+  defaultLayout: string;
+  aggressiveness: number;
+  blacklist: string[];
+};
 
 type Tab = "general" | "blacklist" | "statistics";
 
@@ -117,6 +126,21 @@ function GeneralSettings() {
   const [defaultLayout, setDefaultLayout] = useState("us-qwerty");
   const [aggressiveness, setAggressiveness] = useState([65]);
 
+  useEffect(() => {
+    invoke<AppSettings>("get_settings").then((s) => {
+      setEnabled(s.enabled);
+      setDefaultLayout(s.defaultLayout);
+      setAggressiveness([s.aggressiveness]);
+    }).catch(console.error);
+  }, []);
+
+  const handleUpdate = (updates: Partial<AppSettings>) => {
+    invoke<AppSettings>("get_settings").then((current) => {
+      const updated = { ...current, ...updates };
+      return invoke("update_settings", { settings: updated });
+    }).catch(console.error);
+  };
+
   return (
     <Card className="border border-border bg-card">
       <CardHeader className="pb-4">
@@ -138,7 +162,7 @@ function GeneralSettings() {
           <Switch
             id="enable"
             checked={enabled}
-            onCheckedChange={setEnabled}
+            onCheckedChange={(v) => { setEnabled(v); handleUpdate({ enabled: v }); }}
           />
         </div>
 
@@ -153,7 +177,7 @@ function GeneralSettings() {
               The layout used when no application-specific layout is set.
             </p>
           </div>
-          <Select value={defaultLayout} onValueChange={setDefaultLayout}>
+          <Select value={defaultLayout} onValueChange={(v) => { setDefaultLayout(v); handleUpdate({ defaultLayout: v }); }}>
             <SelectTrigger id="layout" className="h-8 w-full max-w-xs text-sm">
               <SelectValue />
             </SelectTrigger>
@@ -185,7 +209,8 @@ function GeneralSettings() {
           <Slider
             id="aggressiveness"
             value={aggressiveness}
-            onValueChange={setAggressiveness}
+            onValueChange={(v) => setAggressiveness(v)}
+            onValueCommit={(v) => handleUpdate({ aggressiveness: v[0] })}
             max={100}
             step={1}
           />
@@ -196,23 +221,36 @@ function GeneralSettings() {
 }
 
 function BlacklistSettings() {
-  const [blacklist, setBlacklist] = useState([
-    "code.exe",
-    "wezterm.exe",
-    "1password.exe",
-  ]);
+  const [blacklist, setBlacklist] = useState<string[]>([]);
   const [newApp, setNewApp] = useState("");
 
+  useEffect(() => {
+    invoke<AppSettings>("get_settings")
+      .then((s) => setBlacklist(s.blacklist))
+      .catch(console.error);
+  }, []);
+
+  const handleUpdate = (updatedList: string[]) => {
+    invoke<AppSettings>("get_settings").then((current) => {
+      const updated = { ...current, blacklist: updatedList };
+      return invoke("update_settings", { settings: updated });
+    }).catch(console.error);
+  };
+
   const addToBlacklist = () => {
-    const trimmed = newApp.trim();
+    const trimmed = newApp.trim().toLowerCase();
     if (trimmed && !blacklist.includes(trimmed)) {
-      setBlacklist([...blacklist, trimmed]);
+      const newList = [...blacklist, trimmed];
+      setBlacklist(newList);
+      handleUpdate(newList);
       setNewApp("");
     }
   };
 
   const removeFromBlacklist = (app: string) => {
-    setBlacklist(blacklist.filter((item) => item !== app));
+    const newList = blacklist.filter((item) => item !== app);
+    setBlacklist(newList);
+    handleUpdate(newList);
   };
 
   return (

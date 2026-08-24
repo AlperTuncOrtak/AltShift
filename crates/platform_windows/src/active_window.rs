@@ -6,31 +6,24 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
-/// Varsayılan kara liste (Terminal, IDE, Şifre Yöneticileri, Sanal Makineler)
-const DEFAULT_BLACKLIST: &[&str] = &[
-    // Terminaller
-    "cmd.exe",
-    "pwsh.exe",
-    "powershell.exe",
-    "WindowsTerminal.exe",
-    "mintty.exe",
-    // IDE'ler
-    "Code.exe",
-    "idea64.exe",
-    "datagrip64.exe",
-    "pycharm64.exe",
-    "rider64.exe",
-    "devenv.exe", // Visual Studio
-    // Şifre Yöneticileri
-    "1Password.exe",
-    "Bitwarden.exe",
-    "KeePassXC.exe",
-    "KeePass.exe",
-    // Sanal Makineler / Uzak Masaüstü
-    "mstsc.exe",
-    "vmware-view.exe",
-    "vmconnect.exe",
-];
+use std::sync::Mutex;
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref CUSTOM_BLACKLIST: Mutex<Vec<String>> = Mutex::new(
+        vec![
+            "cmd.exe", "pwsh.exe", "powershell.exe", "windowsterminal.exe", "mintty.exe",
+            "code.exe", "idea64.exe", "datagrip64.exe", "pycharm64.exe", "rider64.exe", "devenv.exe",
+            "1password.exe", "bitwarden.exe", "keepassxc.exe", "keepass.exe",
+            "mstsc.exe", "vmware-view.exe", "vmconnect.exe"
+        ].into_iter().map(String::from).collect()
+    );
+}
+
+pub fn update_blacklist(new_list: Vec<String>) {
+    let mut bl = CUSTOM_BLACKLIST.lock().unwrap();
+    *bl = new_list.into_iter().map(|s| s.to_lowercase()).collect();
+}
 
 /// O an ekranda aktif (odaklanmış) olan pencerenin exe adını döndürür
 pub fn get_active_process_name() -> Option<String> {
@@ -76,9 +69,8 @@ pub fn get_active_process_name() -> Option<String> {
 pub fn is_active_app_blocked() -> bool {
     if let Some(exe_name) = get_active_process_name() {
         let exe_lower = exe_name.to_lowercase();
-        DEFAULT_BLACKLIST
-            .iter()
-            .any(|&blocked| blocked.to_lowercase() == exe_lower)
+        let bl = CUSTOM_BLACKLIST.lock().unwrap();
+        bl.iter().any(|blocked| blocked == &exe_lower)
     } else {
         false
     }
