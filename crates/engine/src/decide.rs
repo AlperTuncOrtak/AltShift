@@ -13,6 +13,14 @@ use lang::LanguageModel;
 pub struct Thresholds {
     /// Normal typing.
     pub margin: f64,
+    /// Extra margin demanded of short words, divided by word length.
+    ///
+    /// A score is a mean over trigrams, so a four-letter word averages three
+    /// samples and a ten-letter word averages nine: the short word's estimate
+    /// is simply noisier. Without this, nearly every surviving false positive
+    /// was four letters long -- including real words like `verb` and `внук`,
+    /// which a flat threshold cannot separate from corpus junk.
+    pub short_word_penalty: f64,
     /// The first word after focus moved to a new window.
     ///
     /// Deliberately lower: this is exactly where the user has not yet checked
@@ -24,24 +32,27 @@ pub struct Thresholds {
 
 impl Default for Thresholds {
     fn default() -> Self {
-        // Set by sweeping the accuracy harness over the OpenSubtitles word
-        // lists (see tools/accuracy). `margin` is the lowest value that stays
-        // inside the false-positive budget, so we rescue as many words as
-        // possible without exceeding it:
+        // Set by sweeping the accuracy harness over held-out OpenSubtitles
+        // lists (see tools/accuracy). We take the configuration with the
+        // fewest misses that still fits the false-positive budget, since a
+        // missed word costs a keystroke and a mangled one costs a user.
         //
-        //   margin   false pos   false neg
-        //   0.8        0.122%      6.79%
-        //   0.9        0.117%      7.72%
-        //   1.0        0.096%      8.76%   <- budget is 0.100%
-        //   1.1        0.075%     10.26%
+        //   penalty  margin   false pos   false neg
+        //   0        1.2        0.090%      7.36%
+        //   3        0.6        0.080%      7.02%
+        //   4        0.3        0.096%      6.39%   <- chosen
+        //   5        0.1        0.096%      6.36%
+        //   6        0.0        0.080%      6.88%
         //
-        // The curve is steep: the same budget needed margin 3.0 (and a 93%
-        // miss rate) until `guards` raised its minimum word length to 4.
-        // Three-letter tokens produced nearly every false positive.
+        // `short_word_penalty` earns its place: with a flat threshold, four
+        // letters accounted for nearly every surviving false positive --
+        // `verb`, `kerb`, `внук`, `лгут` -- and no flat value separated those
+        // from corpus junk. Trading base margin for length sensitivity cut
+        // misses from 7.36% to 6.39% at the same budget.
         //
-        // `first_word_margin` is NOT measured yet -- the harness has no notion
-        // of focus changes. Validate it or delete the field (WUL-16).
-        Self { margin: 1.0, first_word_margin: 0.6 }
+        // `first_word_margin` is NOT measured: the harness has no notion of
+        // focus changes. Validate it or delete the field (WUL-16).
+        Self { margin: 0.3, first_word_margin: 0.2, short_word_penalty: 4.0 }
     }
 }
 
@@ -161,11 +172,13 @@ impl Engine {
             }
         }
 
-        let required = if first_word_after_focus {
+        let base = if first_word_after_focus {
             self.thresholds.first_word_margin
         } else {
             self.thresholds.margin
         };
+        // Demand a wider margin where the evidence is thinner.
+        let required = base + self.thresholds.short_word_penalty / typed.chars().count() as f64;
 
         match best {
             Some(c) if c.margin > required => Decision::Correct(c),
@@ -182,15 +195,25 @@ mod tests {
     const BOTH: [LayoutId; 2] = [LayoutId::UsQwerty, LayoutId::RuYcuken];
 
     fn engine() -> Engine {
+        // Counts stand in for corpus frequency; the model reads relative
+        // magnitude, so only the ordering has to be plausible.
         let en = LanguageModel::train(
             "en",
-            ["hello", "there", "world", "message", "the", "and", "letter", "sender", "system"]
-                .map(String::from),
+            [
+                ("the", 900_000), ("and", 500_000), ("hello", 90_000), ("there", 80_000),
+                ("world", 40_000), ("message", 20_000), ("letter", 15_000),
+                ("sender", 4_000), ("system", 3_000),
+            ]
+            .map(|(w, c)| (w.to_string(), c)),
         );
         let ru = LanguageModel::train(
             "ru",
-            ["привет", "как", "дела", "хорошо", "спасибо", "сообщение", "письмо", "система"]
-                .map(String::from),
+            [
+                ("как", 800_000), ("привет", 200_000), ("дела", 90_000), ("хорошо", 70_000),
+                ("спасибо", 60_000), ("сообщение", 20_000), ("письмо", 15_000),
+                ("система", 3_000),
+            ]
+            .map(|(w, c)| (w.to_string(), c)),
         );
         Engine::new().with_model(LayoutId::UsQwerty, en).with_model(LayoutId::RuYcuken, ru)
     }

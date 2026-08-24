@@ -54,6 +54,10 @@ fn main() {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(Thresholds::default().margin),
+            short_word_penalty: std::env::var("ALTSHIFT_SHORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(Thresholds::default().short_word_penalty),
             ..Thresholds::default()
         });
 
@@ -103,12 +107,12 @@ struct Outcome {
 
 /// Type `words` (which are valid in `source`) while `active` is the live layout,
 /// and check the engine does what `expect` says.
-fn run(e: &Engine, words: &[String], source: LayoutId, active: LayoutId, expect: Expect) -> Outcome {
+fn run(e: &Engine, words: &[(String, u64)], source: LayoutId, active: LayoutId, expect: Expect) -> Outcome {
     let ctx = Context { is_password_field: Some(false), ..Context::default() };
     let source_layout = source.layout();
     let mut out = Outcome::default();
 
-    for word in words {
+    for (word, _) in words {
         // The keys a user presses to produce this word on its own layout. Those
         // same keys are what reach us when the wrong layout is active.
         let Some(strokes) = source_layout.strokes_for(word) else { continue };
@@ -142,7 +146,7 @@ fn report(label: &str, o: &Outcome) {
     }
 }
 
-fn load(path: impl AsRef<Path>, script: Script) -> std::io::Result<Vec<String>> {
+fn load(path: impl AsRef<Path>, script: Script) -> std::io::Result<Vec<(String, u64)>> {
     // Keep only words written wholly in the target script. Subtitle corpora
     // leak the other alphabet freely (brand names, song titles), and such
     // entries would teach each model to accept the very script it exists to
@@ -157,15 +161,19 @@ fn load(path: impl AsRef<Path>, script: Script) -> std::io::Result<Vec<String>> 
     };
     Ok(std::fs::read_to_string(path)?
         .lines()
-        .map(|l| l.trim().to_lowercase())
-        .filter(|l| l.chars().count() >= 3 && l.chars().all(in_script))
+        .filter_map(|line| {
+            let (word, count) = line.trim().split_once(' ')?;
+            let word = word.to_lowercase();
+            let count: u64 = count.trim().parse().ok()?;
+            (word.chars().count() >= 3 && word.chars().all(in_script)).then_some((word, count))
+        })
         .collect())
 }
 
 /// Deterministic 80/20 split, hashed on the word so the same word always lands
 /// on the same side across runs and threshold changes stay comparable.
-fn split(words: &[String]) -> (Vec<String>, Vec<String>) {
-    words.iter().cloned().partition(|w| {
+fn split(words: &[(String, u64)]) -> (Vec<(String, u64)>, Vec<(String, u64)>) {
+    words.iter().cloned().partition(|(w, _)| {
         let mut h = DefaultHasher::new();
         w.hash(&mut h);
         h.finish() % 5 != 0
