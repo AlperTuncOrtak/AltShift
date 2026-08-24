@@ -5,8 +5,10 @@ members = [
     "crates/lang",
     "crates/guards",
     "crates/engine",
-    "tools/accuracy"
-, "crates/platform_windows"]
+    "tools/accuracy",
+    "crates/platform_windows",
+    "ui/src-tauri"
+]
 
 [workspace.package]
 version = "0.1.0"
