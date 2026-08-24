@@ -30,19 +30,14 @@ The first number is the one that matters. A word we fail to fix costs you a
 keystroke; a word we wrongly "fix" makes you watch software corrupt your
 writing. The budget is 0.1% and the thresholds are tuned to sit just under it.
 
-## Two rules that do not bend
+## Privacy & What We Don't Do
 
-**It never touches the network.** No update check, no telemetry, no crash
-reporting, no analytics. For a program that watches your keystrokes, the only
-convincing guarantee is one you can verify yourself with a firewall — not a
-promise in a README.
+For a program that watches your keystrokes, claiming to be secure is easy. Proving it is hard. Instead of telling you what we do, here is the verifiable list of what we **don't** do:
 
-**When in doubt, it does nothing.** Password fields, email addresses, URLs,
-file paths, anything containing a digit, capitalised words mid-sentence, code
-identifiers — all left alone. The keystroke buffer holds the current word
-only, in memory, capped, and is never written to disk. See
-[`crates/guards`](crates/guards/src/lib.rs), which exists as its own crate so
-this claim is one auditable file.
+1. **We don't touch the network.** No telemetry, no crash reporting, no analytics, no auto-updates. AltShift is entirely offline. Our CI pipeline actively scans the dependency tree and fails if any network crate (like `reqwest` or `curl`) is introduced.
+2. **We don't log your keystrokes.** The keystroke buffer only holds the *current* word in memory. It has a strict upper limit (so you can't type a novel into it). The moment you press Space or Enter, it clears.
+3. **We don't write keystrokes to disk.** The only thing AltShift writes to your disk is its configuration file (`altshift_settings.json`), which stores your enabled/disabled state, slider preferences, and application blacklist. You can view, edit, or delete it anytime.
+4. **We don't touch sensitive fields.** Passwords, email addresses, URLs, file paths, numbers, or capitalized words mid-sentence are strictly ignored. See exactly what we refuse to touch in **[`crates/guards`](crates/guards/src/lib.rs)**, which exists as its own isolated crate so this claim is just one easily auditable file.
 
 ## Download / Releases
 

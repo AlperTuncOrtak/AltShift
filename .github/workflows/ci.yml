@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Verify No Network Crates
+        run: |
+          # If any of these networking crates exist in the dependency tree of our Rust workspace, fail the build.
+          # We only check the main cargo workspace. Tauri UI dependencies are standard web dependencies.
+          $banned_crates = @("reqwest", "hyper", "curl", "ureq", "awc", "surf", "isahc")
+          
+          # Run cargo tree and capture output
+          $tree = cargo tree --workspace
+          
+          foreach ($crate in $banned_crates) {
+              if ($tree -match "\b$crate\b") {
+                  Write-Error "Privacy violation! Banned network crate found: $crate"
+                  exit 1
+              }
+          }
+          Write-Host "Privacy check passed: No network crates found in the dependency tree."
+
+      - name: Run Tests
+        run: cargo test --workspace
