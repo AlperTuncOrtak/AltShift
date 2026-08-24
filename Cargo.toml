@@ -5,8 +5,8 @@ members = [
     "crates/lang",
     "crates/guards",
     "crates/engine",
-    "tools/accuracy",
-]
+    "tools/accuracy"
+, "crates/platform_windows"]
 
 [workspace.package]
 version = "0.1.0"
