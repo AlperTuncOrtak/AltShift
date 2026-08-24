@@ -1,3 +1,4 @@
+use keymap::LayoutId;
 use std::ptr;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayoutList;
@@ -5,7 +6,6 @@ use windows::Win32::UI::TextServices::HKL;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowThreadProcessId, PostMessageW, WM_INPUTLANGCHANGEREQUEST,
 };
-use keymap::LayoutId;
 
 /// Sistemde kurulu olan klavye düzenlerini HKL listesi olarak çeker
 /// ve bizim bildiğimiz LayoutId'lere eşler.
@@ -19,14 +19,14 @@ pub fn get_installed_layouts() -> Vec<LayoutId> {
 
         let mut hkl_list = vec![HKL(0); count as usize];
         let fetched = GetKeyboardLayoutList(Some(&mut hkl_list));
-        
+
         let mut layouts = Vec::new();
         for i in 0..fetched {
             let hkl_val = hkl_list[i as usize].0 as usize;
-            
+
             // HKL'nin alt 16 biti dil (Language ID) kodudur.
             let lang_id = hkl_val & 0xFFFF;
-            
+
             match lang_id {
                 0x0409 => {
                     if !layouts.contains(&LayoutId::UsQwerty) {
@@ -41,7 +41,7 @@ pub fn get_installed_layouts() -> Vec<LayoutId> {
                 _ => {} // Desteklemediğimiz bir dil (Örn: Türkçe 0x041F)
             }
         }
-        
+
         layouts
     }
 }

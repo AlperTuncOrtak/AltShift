@@ -70,7 +70,11 @@ pub struct Context {
 impl Default for Context {
     /// The safe context: assume a password field until proven otherwise.
     fn default() -> Self {
-        Self { is_password_field: None, app_blocked: false, sentence_initial: false }
+        Self {
+            is_password_field: None,
+            app_blocked: false,
+            sentence_initial: false,
+        }
     }
 }
 
@@ -164,7 +168,11 @@ impl Guards {
         };
 
         // All-caps is shouting, not a secret. Leave it correctable.
-        if token.chars().filter(|c| c.is_alphabetic()).all(char::is_uppercase) {
+        if token
+            .chars()
+            .filter(|c| c.is_alphabetic())
+            .all(char::is_uppercase)
+        {
             return Verdict::Allow;
         }
         // A capital anywhere but the front means camelCase or a generated
@@ -187,7 +195,10 @@ mod tests {
 
     /// A context where the platform proved the field is ordinary text.
     fn safe() -> Context {
-        Context { is_password_field: Some(false), ..Context::default() }
+        Context {
+            is_password_field: Some(false),
+            ..Context::default()
+        }
     }
 
     #[test]
@@ -197,15 +208,27 @@ mod tests {
 
     #[test]
     fn a_password_field_blocks_everything() {
-        let ctx = Context { is_password_field: Some(true), ..Context::default() };
-        assert_eq!(Guards::new().check("ghbdtn", &ctx), Verdict::Block(Reason::SecureField));
+        let ctx = Context {
+            is_password_field: Some(true),
+            ..Context::default()
+        };
+        assert_eq!(
+            Guards::new().check("ghbdtn", &ctx),
+            Verdict::Block(Reason::SecureField)
+        );
     }
 
     /// The whole reason `is_password_field` is an `Option`.
     #[test]
     fn an_undetermined_field_blocks_too() {
-        let ctx = Context { is_password_field: None, ..Context::default() };
-        assert_eq!(Guards::new().check("ghbdtn", &ctx), Verdict::Block(Reason::SecureField));
+        let ctx = Context {
+            is_password_field: None,
+            ..Context::default()
+        };
+        assert_eq!(
+            Guards::new().check("ghbdtn", &ctx),
+            Verdict::Block(Reason::SecureField)
+        );
     }
 
     #[test]
@@ -229,9 +252,15 @@ mod tests {
     #[test]
     fn a_name_mid_sentence_is_left_alone() {
         let g = Guards::new();
-        assert_eq!(g.check("Cagri", &safe()), Verdict::Block(Reason::ProperNoun));
+        assert_eq!(
+            g.check("Cagri", &safe()),
+            Verdict::Block(Reason::ProperNoun)
+        );
         // ...but the same word opening a sentence is fair game.
-        let ctx = Context { sentence_initial: true, ..safe() };
+        let ctx = Context {
+            sentence_initial: true,
+            ..safe()
+        };
         assert_eq!(g.check("Cagri", &ctx), Verdict::Allow);
     }
 
@@ -243,12 +272,18 @@ mod tests {
     #[test]
     fn a_long_secret_is_left_alone() {
         let g = Guards::new();
-        assert_eq!(g.check("correcthorsebatterystaple", &safe()), Verdict::Block(Reason::TooLong));
+        assert_eq!(
+            g.check("correcthorsebatterystaple", &safe()),
+            Verdict::Block(Reason::TooLong)
+        );
     }
 
     #[test]
     fn short_words_carry_too_little_signal() {
-        assert_eq!(Guards::new().check("ab", &safe()), Verdict::Block(Reason::TooShort));
+        assert_eq!(
+            Guards::new().check("ab", &safe()),
+            Verdict::Block(Reason::TooShort)
+        );
     }
 
     #[test]
@@ -256,6 +291,9 @@ mod tests {
         let mut g = Guards::new();
         assert!(g.check("ghbdtn", &safe()).is_allowed());
         g.add_exception("ghbdtn");
-        assert_eq!(g.check("GhBdTn".to_lowercase().as_str(), &safe()), Verdict::Block(Reason::UserException));
+        assert_eq!(
+            g.check("GhBdTn".to_lowercase().as_str(), &safe()),
+            Verdict::Block(Reason::UserException)
+        );
     }
 }

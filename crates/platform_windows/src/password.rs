@@ -4,9 +4,7 @@ use windows::Win32::Foundation::HWND;
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
 };
-use windows::Win32::UI::Accessibility::{
-    CUIAutomation, IUIAutomation, UIA_IsPasswordPropertyId,
-};
+use windows::Win32::UI::Accessibility::{CUIAutomation, IUIAutomation, UIA_IsPasswordPropertyId};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetGUIThreadInfo, GetWindowLongW, GUITHREADINFO, GWL_STYLE,
 };
@@ -36,7 +34,8 @@ pub fn is_password_field(hwnd: HWND) -> Option<bool> {
 /// Klasik Win32 Edit kontrolleri için şifre alanı kontrolü
 fn check_win32_password(hwnd: HWND) -> Option<bool> {
     unsafe {
-        let thread_id = windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None);
+        let thread_id =
+            windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId(hwnd, None);
         if thread_id == 0 {
             return None;
         }
@@ -74,7 +73,8 @@ fn check_uia_password() -> Option<bool> {
         let _ = CoInitializeEx(Some(ptr::null()), COINIT_MULTITHREADED);
 
         // UIA nesnesini yarat
-        let uia: Result<IUIAutomation, _> = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER);
+        let uia: Result<IUIAutomation, _> =
+            CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER);
         let uia = match uia {
             Ok(u) => u,
             Err(_) => return None,

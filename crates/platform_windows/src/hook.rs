@@ -1,29 +1,28 @@
+use crate::injector::ALTSHIFT_MAGIC_INFO;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, SetWindowsHookExW, UnhookWindowsHookEx, GetMessageW, 
-    WH_KEYBOARD_LL, HHOOK, KBDLLHOOKSTRUCT, MSG,
-};
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use crate::injector::ALTSHIFT_MAGIC_INFO;
+use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
+    MSG, WH_KEYBOARD_LL,
+};
 
 /// Enjeksiyon sırasında (düzeltme yapılırken) basılan tuşların tutulduğu tampon.
 static HELD_KEYS: Mutex<Vec<INPUT>> = Mutex::new(Vec::new());
 
-/// Motorun metin enjekte ettiğini (ve dışarıdan gelen tuşların bekletilmesi gerektiğini) 
+/// Motorun metin enjekte ettiğini (ve dışarıdan gelen tuşların bekletilmesi gerektiğini)
 /// belirten atomik bayrak.
 static INJECTION_LOCK: AtomicBool = AtomicBool::new(false);
 
-use engine::{Engine, Buffer, Decision};
-use keymap::{LayoutId, Stroke};
+use engine::{Buffer, Decision, Engine};
 use guards::Context;
+use keymap::{LayoutId, Stroke};
 
 /// Istatistik: Toplam yapilan duzeltme sayisi
-pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 lazy_static::lazy_static! {
     pub static ref ENGINE: Mutex<Engine> = Mutex::new(Engine::new());
@@ -31,35 +30,45 @@ lazy_static::lazy_static! {
 }
 
 pub fn init_engine() {
-    let en_words = include_str!("../../../data/en.txt").lines().map(String::from);
-    let ru_words = include_str!("../../../data/ru.txt").lines().map(String::from);
-    
+    let en_words = include_str!("../../../data/en.txt")
+        .lines()
+        .map(String::from);
+    let ru_words = include_str!("../../../data/ru.txt")
+        .lines()
+        .map(String::from);
+
     let mut engine = ENGINE.lock().unwrap();
     *engine = Engine::new()
-        .with_model(LayoutId::UsQwerty, lang::LanguageModel::train("en", en_words))
-        .with_model(LayoutId::RuYcuken, lang::LanguageModel::train("ru", ru_words));
-    
+        .with_model(
+            LayoutId::UsQwerty,
+            lang::LanguageModel::train("en", en_words),
+        )
+        .with_model(
+            LayoutId::RuYcuken,
+            lang::LanguageModel::train("ru", ru_words),
+        );
+
     println!("AltShift Engine initialized with EN and RU models.");
 }
 
-/// Enjeksiyon işlemine başlamadan önce çağrılır. 
+/// Enjeksiyon işlemine başlamadan önce çağrılır.
 /// Bu andan itibaren kullanıcının bastığı tuşlar uygulamaya gitmez, tamponda birikir.
 pub fn acquire_injection_lock() {
     INJECTION_LOCK.store(true, Ordering::SeqCst);
 }
 
-/// Enjeksiyon bittikten sonra çağrılır. Tamponda biriken tuşları sırasıyla 
+/// Enjeksiyon bittikten sonra çağrılır. Tamponda biriken tuşları sırasıyla
 /// işletim sistemine (uygulamaya) gönderir ve kilidi açar.
 pub fn release_injection_lock_and_flush() {
     let mut keys = HELD_KEYS.lock().unwrap();
-    
+
     if !keys.is_empty() {
         unsafe {
             SendInput(&keys, std::mem::size_of::<INPUT>() as i32);
         }
         keys.clear();
     }
-    
+
     INJECTION_LOCK.store(false, Ordering::SeqCst);
 }
 
@@ -86,14 +95,18 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     // Kural 2: Eğer motor şu an metin siliyor/yazıyorsa (Yarış durumu koruması)
     if INJECTION_LOCK.load(Ordering::SeqCst) {
         let mut keys = HELD_KEYS.lock().unwrap();
-        
+
         let input = INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: windows::Win32::UI::Input::KeyboardAndMouse::INPUT_0 {
                 ki: KEYBDINPUT {
-                    wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(hook_struct.vkCode as u16),
+                    wVk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY(
+                        hook_struct.vkCode as u16,
+                    ),
                     wScan: hook_struct.scanCode as u16,
-                    dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(hook_struct.flags.0),
+                    dwFlags: windows::Win32::UI::Input::KeyboardAndMouse::KEYBD_EVENT_FLAGS(
+                        hook_struct.flags.0,
+                    ),
                     time: hook_struct.time,
                     dwExtraInfo: 0, // Orijinal tuş, sihirli numara yok
                 },
@@ -101,7 +114,7 @@ pub unsafe extern "system" fn keyboard_hook_proc(
         };
 
         keys.push(input);
-        
+
         // Tuşu yut (Uygulamaya gitmesin)
         return LRESULT(1);
     }
@@ -110,18 +123,25 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     if hook_struct.flags.0 & windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP.0 == 0 {
         if let Some(key) = crate::vk_map::vk_to_key(hook_struct.vkCode as u16) {
             let mut buf = BUFFER.lock().unwrap();
-            
+
             // Eğer boşluk tuşuna basıldıysa (kelime sonu)
-            if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0 {
+            if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0
+            {
                 // Şimdilik default Context ve LayoutId ile karar verelim
                 let ctx = Context::default(); // TODO: get from active window
                 let current_layout = LayoutId::UsQwerty; // TODO: get from active window
-                
+
                 let decision = {
                     let mut engine = ENGINE.lock().unwrap();
-                    engine.decide(buf.strokes(), current_layout, &[LayoutId::UsQwerty, LayoutId::RuYcuken], &ctx, None)
+                    engine.decide(
+                        buf.strokes(),
+                        current_layout,
+                        &[LayoutId::UsQwerty, LayoutId::RuYcuken],
+                        &ctx,
+                        None,
+                    )
                 };
-                
+
                 if let Decision::Correct(correction) = decision {
                     TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
                     // Düzeltmeyi uygula (enjekte et)
@@ -129,10 +149,10 @@ pub unsafe extern "system" fn keyboard_hook_proc(
                     crate::hook::acquire_injection_lock();
                     let _ = crate::injector::replace_text(correction.backspaces, &correction.to);
                     crate::hook::release_injection_lock_and_flush();
-                    
+
                     buf.clear(engine::Break::Applied);
-                    return LRESULT(1); // Boşluğu yut? Veya boşluğu yazması için bırakalım? 
-                    // Replace text metni yazar. Space sonradan gelebilir.
+                    return LRESULT(1); // Boşluğu yut? Veya boşluğu yazması için bırakalım?
+                                       // Replace text metni yazar. Space sonradan gelebilir.
                 } else {
                     buf.clear(engine::Break::WordEnd);
                 }
@@ -143,7 +163,7 @@ pub unsafe extern "system" fn keyboard_hook_proc(
             }
         }
     }
-    
+
     CallNextHookEx(None, n_code, w_param, l_param)
 }
 
@@ -154,12 +174,8 @@ pub fn run_hook_loop() -> Result<(), String> {
     unsafe {
         let h_instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
 
-        let hook_id = SetWindowsHookExW(
-            WH_KEYBOARD_LL,
-            Some(keyboard_hook_proc),
-            h_instance,
-            0,
-        ).map_err(|e| e.to_string())?;
+        let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), h_instance, 0)
+            .map_err(|e| e.to_string())?;
 
         // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.
         let mut msg = MSG::default();
@@ -171,6 +187,6 @@ pub fn run_hook_loop() -> Result<(), String> {
         // Döngü kırılırsa hook'u kaldır
         let _ = UnhookWindowsHookEx(hook_id);
     }
-    
+
     Ok(())
 }

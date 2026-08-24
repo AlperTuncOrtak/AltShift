@@ -19,7 +19,10 @@ pub struct Thresholds {
 
 impl Default for Thresholds {
     fn default() -> Self {
-        Self { margin: 1.0, context_bonus: 0.4 }
+        Self {
+            margin: 1.0,
+            context_bonus: 0.4,
+        }
     }
 }
 
@@ -104,14 +107,18 @@ impl Engine {
             if candidate_id == current {
                 continue;
             }
-            let Some(model) = self.model(candidate_id) else { continue };
-            let Some(rendered) = candidate_id.layout().render(strokes) else { continue };
+            let Some(model) = self.model(candidate_id) else {
+                continue;
+            };
+            let Some(rendered) = candidate_id.layout().render(strokes) else {
+                continue;
+            };
             if rendered == typed {
                 continue;
             }
 
             let mut margin = model.score(&rendered) - typed_score;
-            
+
             // Apply context bonus if this candidate matches the recent layout context
             if recent == Some(candidate_id) {
                 margin += self.thresholds.context_bonus;
@@ -145,20 +152,36 @@ mod tests {
     fn engine() -> Engine {
         let en = LanguageModel::train(
             "en",
-            ["hello", "there", "world", "message", "the", "and", "letter", "sender", "system"]
-                .map(String::from),
+            [
+                "hello", "there", "world", "message", "the", "and", "letter", "sender", "system",
+            ]
+            .map(String::from),
         );
         let ru = LanguageModel::train(
             "ru",
-            ["привет", "как", "дела", "хорошо", "спасибо", "сообщение", "письмо", "система"]
-                .map(String::from),
+            [
+                "привет",
+                "как",
+                "дела",
+                "хорошо",
+                "спасибо",
+                "сообщение",
+                "письмо",
+                "система",
+            ]
+            .map(String::from),
         );
-        Engine::new().with_model(LayoutId::UsQwerty, en).with_model(LayoutId::RuYcuken, ru)
+        Engine::new()
+            .with_model(LayoutId::UsQwerty, en)
+            .with_model(LayoutId::RuYcuken, ru)
     }
 
     /// A context the platform has positively cleared as ordinary text.
     fn safe() -> Context {
-        Context { is_password_field: Some(false), ..Context::default() }
+        Context {
+            is_password_field: Some(false),
+            ..Context::default()
+        }
     }
 
     fn strokes(text: &str) -> Vec<Stroke> {
@@ -195,7 +218,10 @@ mod tests {
     fn guards_win_over_the_score() {
         let e = engine();
         // Scores as strongly Cyrillic, but it is in a password field.
-        let ctx = Context { is_password_field: Some(true), ..Context::default() };
+        let ctx = Context {
+            is_password_field: Some(true),
+            ..Context::default()
+        };
         assert_eq!(
             e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &ctx, None),
             Decision::Leave(Some(Reason::SecureField))
@@ -206,7 +232,13 @@ mod tests {
     #[test]
     fn only_installed_layouts_are_candidates() {
         let only_us = [LayoutId::UsQwerty];
-        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &only_us, &safe(), None);
+        let d = engine().decide(
+            &strokes("ghbdtn"),
+            LayoutId::UsQwerty,
+            &only_us,
+            &safe(),
+            None,
+        );
         assert!(matches!(d, Decision::Leave(_)));
     }
 
@@ -227,7 +259,10 @@ mod tests {
     #[test]
     fn the_swap_works_in_both_directions() {
         let cyrillic = keymap::RU_YCUKEN.strokes_for("hello").unwrap_or_default();
-        assert!(cyrillic.is_empty(), "sanity: latin text is not typeable on the RU table");
+        assert!(
+            cyrillic.is_empty(),
+            "sanity: latin text is not typeable on the RU table"
+        );
 
         let strokes = keymap::RU_YCUKEN.strokes_for("руддщ").unwrap();
         match engine().decide(&strokes, LayoutId::RuYcuken, &BOTH, &safe(), None) {

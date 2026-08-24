@@ -9,7 +9,8 @@ pub const ALTSHIFT_MAGIC_INFO: usize = 0x1234_5678;
 
 /// N adet geri silme gönderip, üzerine verilen metni Unicode olarak (dilden bağımsız) yazar.
 pub fn replace_text(backspace_count: usize, replacement: &str) -> Result<(), String> {
-    let mut inputs = Vec::with_capacity(backspace_count * 2 + replacement.encode_utf16().count() * 2);
+    let mut inputs =
+        Vec::with_capacity(backspace_count * 2 + replacement.encode_utf16().count() * 2);
 
     // 1. Geri silme vuruşlarını hazırla (Bas ve Bırak)
     for _ in 0..backspace_count {
@@ -73,15 +74,16 @@ pub fn replace_text(backspace_count: usize, replacement: &str) -> Result<(), Str
 
     // 3. Hepsini tek bir seferde işletim sistemine gönder (Maksimum hız)
     unsafe {
-        let sent = SendInput(
-            &inputs,
-            mem::size_of::<INPUT>() as i32,
-        );
+        let sent = SendInput(&inputs, mem::size_of::<INPUT>() as i32);
 
         if sent == inputs.len() as u32 {
             Ok(())
         } else {
-            Err(format!("SendInput failed. Expected to send {}, actually sent {}", inputs.len(), sent))
+            Err(format!(
+                "SendInput failed. Expected to send {}, actually sent {}",
+                inputs.len(),
+                sent
+            ))
         }
     }
 }

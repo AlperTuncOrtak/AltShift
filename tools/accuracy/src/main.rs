@@ -41,8 +41,16 @@ fn main() {
     let (en_train, en_test) = split(&en);
     let (ru_train, ru_test) = split(&ru);
 
-    println!("English : {} train / {} test", en_train.len(), en_test.len());
-    println!("Russian : {} train / {} test", ru_train.len(), ru_test.len());
+    println!(
+        "English : {} train / {} test",
+        en_train.len(),
+        en_test.len()
+    );
+    println!(
+        "Russian : {} train / {} test",
+        ru_train.len(),
+        ru_test.len()
+    );
 
     let e = Engine::new()
         .with_model(LayoutId::UsQwerty, LanguageModel::train("en", en_train))
@@ -60,12 +68,36 @@ fn main() {
     println!("\n{:-<64}", "");
 
     // --- False positives: correctly typed words that must be left alone -----
-    let en_fp = run(&e, &en_test, LayoutId::UsQwerty, LayoutId::UsQwerty, Expect::Leave);
-    let ru_fp = run(&e, &ru_test, LayoutId::RuYcuken, LayoutId::RuYcuken, Expect::Leave);
+    let en_fp = run(
+        &e,
+        &en_test,
+        LayoutId::UsQwerty,
+        LayoutId::UsQwerty,
+        Expect::Leave,
+    );
+    let ru_fp = run(
+        &e,
+        &ru_test,
+        LayoutId::RuYcuken,
+        LayoutId::RuYcuken,
+        Expect::Leave,
+    );
 
     // --- False negatives: wrong-layout words that should be rescued --------
-    let ru_fn = run(&e, &ru_test, LayoutId::RuYcuken, LayoutId::UsQwerty, Expect::Correct);
-    let en_fn = run(&e, &en_test, LayoutId::UsQwerty, LayoutId::RuYcuken, Expect::Correct);
+    let ru_fn = run(
+        &e,
+        &ru_test,
+        LayoutId::RuYcuken,
+        LayoutId::UsQwerty,
+        Expect::Correct,
+    );
+    let en_fn = run(
+        &e,
+        &en_test,
+        LayoutId::UsQwerty,
+        LayoutId::RuYcuken,
+        Expect::Correct,
+    );
 
     report("FALSE POSITIVE  English typed on US ", &en_fp);
     report("FALSE POSITIVE  Russian typed on RU ", &ru_fp);
@@ -76,7 +108,11 @@ fn main() {
     let fn_rate = (en_fn.wrong + ru_fn.wrong) as f64 / (en_fn.total + ru_fn.total).max(1) as f64;
 
     println!("\n{:-<64}", "");
-    println!("false positive rate  {:>7.3}%   (budget {:.3}%)", fp_rate * 100.0, FALSE_POSITIVE_BUDGET * 100.0);
+    println!(
+        "false positive rate  {:>7.3}%   (budget {:.3}%)",
+        fp_rate * 100.0,
+        FALSE_POSITIVE_BUDGET * 100.0
+    );
     println!("false negative rate  {:>7.3}%", fn_rate * 100.0);
 
     if fp_rate <= FALSE_POSITIVE_BUDGET {
@@ -103,15 +139,26 @@ struct Outcome {
 
 /// Type `words` (which are valid in `source`) while `active` is the live layout,
 /// and check the engine does what `expect` says.
-fn run(e: &Engine, words: &[String], source: LayoutId, active: LayoutId, expect: Expect) -> Outcome {
-    let ctx = Context { is_password_field: Some(false), ..Context::default() };
+fn run(
+    e: &Engine,
+    words: &[String],
+    source: LayoutId,
+    active: LayoutId,
+    expect: Expect,
+) -> Outcome {
+    let ctx = Context {
+        is_password_field: Some(false),
+        ..Context::default()
+    };
     let source_layout = source.layout();
     let mut out = Outcome::default();
 
     for word in words {
         // The keys a user presses to produce this word on its own layout. Those
         // same keys are what reach us when the wrong layout is active.
-        let Some(strokes) = source_layout.strokes_for(word) else { continue };
+        let Some(strokes) = source_layout.strokes_for(word) else {
+            continue;
+        };
 
         let decision = e.decide(&strokes, active, &AVAILABLE, &ctx, false);
         out.total += 1;

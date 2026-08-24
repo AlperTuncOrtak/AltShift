@@ -32,5 +32,23 @@ jobs:
           }
           Write-Host "Privacy check passed: No network crates found in the dependency tree."
 
+      - name: Cache Wordlists
+        id: cache-wordlists
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: ${{ runner.os }}-wordlists-2018
+
+      - name: Fetch Wordlists
+        if: steps.cache-wordlists.outputs.cache-hit != 'true'
+        shell: bash
+        run: ./fetch-wordlists.sh
+
       - name: Run Tests
-        run: cargo test --workspace
+        run: |
+          cargo test --workspace
+          cargo clippy -- -D warnings
+          cargo fmt --check
+
+      - name: Run Accuracy Gate
+        run: cargo run --release -p accuracy

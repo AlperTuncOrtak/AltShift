@@ -1,6 +1,6 @@
+use keymap::LayoutId;
 use std::collections::HashMap;
 use std::sync::Mutex;
-use keymap::LayoutId;
 
 /// Uygulama bazlı (exe adı) klavye düzeni hafızası.
 /// Hangi uygulamada (Örn: "telegram.exe") hangi klavye düzeninin (Örn: Rusça)
@@ -15,7 +15,7 @@ pub fn learn_app_layout(exe_name: &str, layout: LayoutId) {
     if exe_name.is_empty() {
         return;
     }
-    
+
     let mut memory = APP_MEMORY.lock().unwrap();
     memory.insert(exe_name.to_lowercase(), layout);
 }

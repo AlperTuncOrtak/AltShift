@@ -6,17 +6,34 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 
-use std::sync::Mutex;
 use lazy_static::lazy_static;
+use std::sync::Mutex;
 
 lazy_static! {
     static ref CUSTOM_BLACKLIST: Mutex<Vec<String>> = Mutex::new(
         vec![
-            "cmd.exe", "pwsh.exe", "powershell.exe", "windowsterminal.exe", "mintty.exe",
-            "code.exe", "idea64.exe", "datagrip64.exe", "pycharm64.exe", "rider64.exe", "devenv.exe",
-            "1password.exe", "bitwarden.exe", "keepassxc.exe", "keepass.exe",
-            "mstsc.exe", "vmware-view.exe", "vmconnect.exe"
-        ].into_iter().map(String::from).collect()
+            "cmd.exe",
+            "pwsh.exe",
+            "powershell.exe",
+            "windowsterminal.exe",
+            "mintty.exe",
+            "code.exe",
+            "idea64.exe",
+            "datagrip64.exe",
+            "pycharm64.exe",
+            "rider64.exe",
+            "devenv.exe",
+            "1password.exe",
+            "bitwarden.exe",
+            "keepassxc.exe",
+            "keepass.exe",
+            "mstsc.exe",
+            "vmware-view.exe",
+            "vmconnect.exe"
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect()
     );
 }
 
@@ -40,7 +57,7 @@ pub fn get_active_process_name() -> Option<String> {
         }
 
         let process_handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        
+
         let mut buffer = [0u16; MAX_PATH as usize];
         let mut size = buffer.len() as u32;
 

@@ -55,8 +55,10 @@ impl LanguageModel {
                 continue;
             }
 
-            let padded: Vec<char> =
-                std::iter::once(START).chain(word.chars()).chain([END]).collect();
+            let padded: Vec<char> = std::iter::once(START)
+                .chain(word.chars())
+                .chain([END])
+                .collect();
             for w in padded.windows(3) {
                 *trigrams.entry((w[0], w[1], w[2])).or_insert(0) += 1;
                 *bigrams.entry((w[0], w[1])).or_insert(0) += 1;
@@ -65,7 +67,13 @@ impl LanguageModel {
             words.insert(word);
         }
 
-        Self { name: name.into(), words, trigrams, bigrams, vocab: alphabet.len().max(1) }
+        Self {
+            name: name.into(),
+            words,
+            trigrams,
+            bigrams,
+            vocab: alphabet.len().max(1),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -90,7 +98,10 @@ impl LanguageModel {
             return f64::NEG_INFINITY;
         }
 
-        let padded: Vec<char> = std::iter::once(START).chain(lower.chars()).chain([END]).collect();
+        let padded: Vec<char> = std::iter::once(START)
+            .chain(lower.chars())
+            .chain([END])
+            .collect();
         let mut total = 0.0;
         let mut n = 0usize;
 
@@ -102,7 +113,11 @@ impl LanguageModel {
             n += 1;
         }
 
-        let mean = if n == 0 { f64::NEG_INFINITY } else { total / n as f64 };
+        let mean = if n == 0 {
+            f64::NEG_INFINITY
+        } else {
+            total / n as f64
+        };
         if self.words.contains(&lower) {
             mean + DICT_BONUS
         } else {
@@ -118,16 +133,26 @@ mod tests {
     fn english() -> LanguageModel {
         LanguageModel::train(
             "en",
-            ["hello", "there", "the", "and", "world", "message", "letter", "sender", "hell"]
-                .map(String::from),
+            [
+                "hello", "there", "the", "and", "world", "message", "letter", "sender", "hell",
+            ]
+            .map(String::from),
         )
     }
 
     fn russian() -> LanguageModel {
         LanguageModel::train(
             "ru",
-            ["привет", "как", "дела", "хорошо", "спасибо", "привычка", "приветствие"]
-                .map(String::from),
+            [
+                "привет",
+                "как",
+                "дела",
+                "хорошо",
+                "спасибо",
+                "привычка",
+                "приветствие",
+            ]
+            .map(String::from),
         )
     }
 

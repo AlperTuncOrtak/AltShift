@@ -1,8 +1,8 @@
-use std::sync::Mutex;
-use std::time::{Duration, Instant};
-use keymap::LayoutId;
 use crate::injector;
 use crate::layout::switch_layout;
+use keymap::LayoutId;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use windows::Win32::Foundation::HWND;
 
 /// Düzeltme işleminin (Correction) sistemdeki izi.
@@ -22,11 +22,7 @@ pub struct CorrectionRecord {
 static LAST_CORRECTION: Mutex<Option<CorrectionRecord>> = Mutex::new(None);
 
 /// Motor bir düzeltme yaptığında bu fonksiyon çağrılarak kayıt altına alınır.
-pub fn record_correction(
-    original_text: String,
-    original_layout: LayoutId,
-    injected_length: usize,
-) {
+pub fn record_correction(original_text: String, original_layout: LayoutId, injected_length: usize) {
     let mut record = LAST_CORRECTION.lock().unwrap();
     *record = Some(CorrectionRecord {
         timestamp: Instant::now(),
@@ -36,12 +32,12 @@ pub fn record_correction(
     });
 }
 
-/// Backspace basıldığında çağrılır. 
+/// Backspace basıldığında çağrılır.
 /// Eğer son düzeltmenin üzerinden 800ms geçmediyse işlemi geri alır.
 /// Başarılı olursa (Geri alma tetiklendiyse) `Some(original_text)` döner (İstisna listesine eklemek için).
 pub fn try_undo(hwnd: HWND) -> Option<String> {
     let mut record_guard = LAST_CORRECTION.lock().unwrap();
-    
+
     let record = record_guard.take()?; // Kaydı al ve temizle (sadece 1 kez geri alınabilir)
 
     // 800 ms sınırı (WUL-22 kuralı)
@@ -51,7 +47,7 @@ pub fn try_undo(hwnd: HWND) -> Option<String> {
 
     // 1. Orijinal metni geri yaz (Ekrandaki düzeltilmiş kelimeyi sil ve eskiyi yaz)
     // injected_length + 1 siliyoruz çünkü kullanıcı bir de kendisi Backspace'e bastı
-    // (Ancak hook'ta Backspace'i yutuyorsak sadece injected_length silmeliyiz. 
+    // (Ancak hook'ta Backspace'i yutuyorsak sadece injected_length silmeliyiz.
     // Şimdilik hook'un yuttuğunu varsayarak tasarlıyoruz).
     let _ = injector::replace_text(record.injected_length, &record.original_text);
 
