@@ -75,6 +75,13 @@ pub fn run() {
         )?;
       }
 
+      // Start the Windows Low-Level Keyboard Hook in a background thread
+      std::thread::spawn(|| {
+          if let Err(e) = platform_windows::hook::run_hook_loop() {
+              log::error!("Keyboard hook loop failed: {}", e);
+          }
+      });
+
       let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
       let menu = Menu::with_items(app, &[&quit_i])?;
 
