@@ -11,59 +11,30 @@ use lang::LanguageModel;
 /// intrusion; the burden of proof sits on the correction.
 #[derive(Copy, Clone, Debug)]
 pub struct Thresholds {
-    /// Normal typing.
+    /// Normal typing threshold.
     pub margin: f64,
-    /// The first word after focus moved to a new window.
-    ///
-    /// Deliberately lower: this is exactly where the user has not yet checked
-    /// which layout is active, so a wrong-layout word is far more likely here
-    /// than mid-paragraph. We are encoding that prior rather than pretending
-    /// every position is equally suspect.
-    pub first_word_margin: f64,
+    /// Bonus applied if the candidate layout matches the layout of recent words.
+    pub context_bonus: f64,
 }
 
 impl Default for Thresholds {
     fn default() -> Self {
-        // Set by sweeping the accuracy harness over the OpenSubtitles word
-        // lists (see tools/accuracy). `margin` is the lowest value that stays
-        // inside the false-positive budget, so we rescue as many words as
-        // possible without exceeding it:
-        //
-        //   margin   false pos   false neg
-        //   0.8        0.122%      6.79%
-        //   0.9        0.117%      7.72%
-        //   1.0        0.096%      8.76%   <- budget is 0.100%
-        //   1.1        0.075%     10.26%
-        //
-        // The curve is steep: the same budget needed margin 3.0 (and a 93%
-        // miss rate) until `guards` raised its minimum word length to 4.
-        // Three-letter tokens produced nearly every false positive.
-        //
-        // `first_word_margin` is NOT measured yet -- the harness has no notion
-        // of focus changes. Validate it or delete the field (WUL-16).
-        Self { margin: 1.0, first_word_margin: 0.6 }
+        Self { margin: 1.0, context_bonus: 0.4 }
     }
 }
 
 /// A rewrite the engine is proposing.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Correction {
-    /// What the user sees now.
     pub from: String,
-    /// What we would put there instead.
     pub to: String,
-    /// The layout to switch to afterwards, so the *next* word is already right.
     pub target_layout: LayoutId,
-    /// How many characters the platform layer must delete first.
     pub backspaces: usize,
-    /// How decisively the alternative won. Surfaced for the accuracy harness
-    /// and for explaining a decision in the settings UI.
     pub margin: f64,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Decision {
-    /// Leave the word alone. Carries a reason when a guard was responsible.
     Leave(Option<Reason>),
     Correct(Correction),
 }
@@ -95,7 +66,6 @@ impl Engine {
         &self.guards
     }
 
-    /// Record that the user undid a correction: never offer it again.
     pub fn reject(&mut self, word: &str) {
         self.guards.add_exception(word);
     }
@@ -104,26 +74,18 @@ impl Engine {
         self.models.iter().find(|(l, _)| *l == id).map(|(_, m)| m)
     }
 
-    /// Decide what to do with a finished word.
-    ///
-    /// `available` is the set of layouts the user actually has installed. It is
-    /// a parameter rather than a constant because it does double duty: we
-    /// cannot switch to a layout the OS does not have, and restricting the
-    /// candidate set to layouts the user genuinely uses removes a whole class
-    /// of false positives for free.
     pub fn decide(
         &self,
         strokes: &[Stroke],
         current: LayoutId,
         available: &[LayoutId],
         ctx: &Context,
-        first_word_after_focus: bool,
+        recent: Option<LayoutId>,
     ) -> Decision {
         if strokes.is_empty() {
             return Decision::Leave(None);
         }
 
-        // What the user is looking at right now.
         let Some(typed) = current.layout().render(strokes) else {
             return Decision::Leave(None);
         };
@@ -144,12 +106,17 @@ impl Engine {
             }
             let Some(model) = self.model(candidate_id) else { continue };
             let Some(rendered) = candidate_id.layout().render(strokes) else { continue };
-            // Punctuation-only runs render identically in both layouts.
             if rendered == typed {
                 continue;
             }
 
-            let margin = model.score(&rendered) - typed_score;
+            let mut margin = model.score(&rendered) - typed_score;
+            
+            // Apply context bonus if this candidate matches the recent layout context
+            if recent == Some(candidate_id) {
+                margin += self.thresholds.context_bonus;
+            }
+
             if best.as_ref().is_none_or(|b| margin > b.margin) {
                 best = Some(Correction {
                     backspaces: typed.chars().count(),
@@ -161,14 +128,8 @@ impl Engine {
             }
         }
 
-        let required = if first_word_after_focus {
-            self.thresholds.first_word_margin
-        } else {
-            self.thresholds.margin
-        };
-
         match best {
-            Some(c) if c.margin > required => Decision::Correct(c),
+            Some(c) if c.margin > self.thresholds.margin => Decision::Correct(c),
             _ => Decision::Leave(None),
         }
     }
@@ -206,7 +167,7 @@ mod tests {
 
     #[test]
     fn wrong_layout_russian_is_corrected() {
-        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false);
+        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None);
         match d {
             Decision::Correct(c) => {
                 assert_eq!(c.from, "ghbdtn");
@@ -222,7 +183,7 @@ mod tests {
     #[test]
     fn correct_english_is_left_alone() {
         for word in ["hello", "world", "message", "there"] {
-            let d = engine().decide(&strokes(word), LayoutId::UsQwerty, &BOTH, &safe(), false);
+            let d = engine().decide(&strokes(word), LayoutId::UsQwerty, &BOTH, &safe(), None);
             assert!(
                 matches!(d, Decision::Leave(_)),
                 "{word} was already correct but got {d:?}"
@@ -236,7 +197,7 @@ mod tests {
         // Scores as strongly Cyrillic, but it is in a password field.
         let ctx = Context { is_password_field: Some(true), ..Context::default() };
         assert_eq!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &ctx, false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &ctx, None),
             Decision::Leave(Some(Reason::SecureField))
         );
     }
@@ -245,7 +206,7 @@ mod tests {
     #[test]
     fn only_installed_layouts_are_candidates() {
         let only_us = [LayoutId::UsQwerty];
-        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &only_us, &safe(), false);
+        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &only_us, &safe(), None);
         assert!(matches!(d, Decision::Leave(_)));
     }
 
@@ -253,12 +214,12 @@ mod tests {
     fn a_rejected_word_is_never_corrected_again() {
         let mut e = engine();
         assert!(matches!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None),
             Decision::Correct(_)
         ));
         e.reject("ghbdtn");
         assert_eq!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None),
             Decision::Leave(Some(Reason::UserException))
         );
     }
@@ -269,7 +230,7 @@ mod tests {
         assert!(cyrillic.is_empty(), "sanity: latin text is not typeable on the RU table");
 
         let strokes = keymap::RU_YCUKEN.strokes_for("руддщ").unwrap();
-        match engine().decide(&strokes, LayoutId::RuYcuken, &BOTH, &safe(), false) {
+        match engine().decide(&strokes, LayoutId::RuYcuken, &BOTH, &safe(), None) {
             Decision::Correct(c) => {
                 assert_eq!(c.to, "hello");
                 assert_eq!(c.target_layout, LayoutId::UsQwerty);
