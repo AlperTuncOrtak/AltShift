@@ -78,6 +78,10 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "engine",
+ "guards",
+ "keymap",
+ "lang",
  "log",
  "platform_windows",
  "serde",
@@ -2319,7 +2323,10 @@ checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
 name = "platform_windows"
 version = "0.1.0"
 dependencies = [
+ "engine",
+ "guards",
  "keymap",
+ "lang",
  "lazy_static",
  "windows 0.52.0",
 ]

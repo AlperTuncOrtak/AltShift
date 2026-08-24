@@ -24,3 +24,7 @@ log = "0.4"
 tauri = { version = "2.11.3", features = ["tray-icon"] }
 tauri-plugin-log = "2"
 platform_windows = { path = "../../crates/platform_windows" }
+engine = { version = "0.1.0", path = "../../crates/engine" }
+lang = { version = "0.1.0", path = "../../crates/lang" }
+keymap = { version = "0.1.0", path = "../../crates/keymap" }
+guards = { version = "0.1.0", path = "../../crates/guards" }

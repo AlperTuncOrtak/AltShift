@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+engine = { version = "0.1.0", path = "../engine" }
+guards = { version = "0.1.0", path = "../guards" }
 keymap = { path = "../keymap" }
+lang = { version = "0.1.0", path = "../lang" }
 lazy_static = "1.4.0"
 
 [dependencies.windows]

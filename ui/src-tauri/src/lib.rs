@@ -88,6 +88,9 @@ pub fn run() {
         )?;
       }
 
+      // Initialize Language Models (trains trigrams in memory)
+      platform_windows::hook::init_engine();
+
       // Start the Windows Low-Level Keyboard Hook in a background thread
       std::thread::spawn(|| {
           if let Err(e) = platform_windows::hook::run_hook_loop() {

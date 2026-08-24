@@ -5,3 +5,4 @@ pub mod hook;
 pub mod layout;
 pub mod undo;
 pub mod app_memory;
+pub mod vk_map;

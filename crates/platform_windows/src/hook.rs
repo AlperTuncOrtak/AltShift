@@ -18,8 +18,29 @@ static HELD_KEYS: Mutex<Vec<INPUT>> = Mutex::new(Vec::new());
 /// belirten atomik bayrak.
 static INJECTION_LOCK: AtomicBool = AtomicBool::new(false);
 
+use engine::{Engine, Buffer, Decision};
+use keymap::{LayoutId, Stroke};
+use guards::Context;
+
 /// Istatistik: Toplam yapilan duzeltme sayisi
 pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+lazy_static::lazy_static! {
+    pub static ref ENGINE: Mutex<Engine> = Mutex::new(Engine::new());
+    pub static ref BUFFER: Mutex<Buffer> = Mutex::new(Buffer::new());
+}
+
+pub fn init_engine() {
+    let en_words = include_str!("../../../data/en.txt").lines().map(String::from);
+    let ru_words = include_str!("../../../data/ru.txt").lines().map(String::from);
+    
+    let mut engine = ENGINE.lock().unwrap();
+    *engine = Engine::new()
+        .with_model(LayoutId::UsQwerty, lang::LanguageModel::train("en", en_words))
+        .with_model(LayoutId::RuYcuken, lang::LanguageModel::train("ru", ru_words));
+    
+    println!("AltShift Engine initialized with EN and RU models.");
+}
 
 /// Enjeksiyon işlemine başlamadan önce çağrılır. 
 /// Bu andan itibaren kullanıcının bastığı tuşlar uygulamaya gitmez, tamponda birikir.
@@ -86,9 +107,41 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     }
 
     // Normal işleyiş: Burada motor (engine) çağrılacak ve gerekirse engellenecek.
-    // Şimdilik pas geçiyoruz. Test için boşluğa basılınca sayaç artır.
-    if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0 {
-        TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
+    if hook_struct.flags.0 & windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP.0 == 0 {
+        if let Some(key) = crate::vk_map::vk_to_key(hook_struct.vkCode as u16) {
+            let mut buf = BUFFER.lock().unwrap();
+            
+            // Eğer boşluk tuşuna basıldıysa (kelime sonu)
+            if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0 {
+                // Şimdilik default Context ve LayoutId ile karar verelim
+                let ctx = Context::default(); // TODO: get from active window
+                let current_layout = LayoutId::UsQwerty; // TODO: get from active window
+                
+                let decision = {
+                    let mut engine = ENGINE.lock().unwrap();
+                    engine.decide(buf.strokes(), current_layout, &[LayoutId::UsQwerty, LayoutId::RuYcuken], &ctx, None)
+                };
+                
+                if let Decision::Correct(correction) = decision {
+                    TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
+                    // Düzeltmeyi uygula (enjekte et)
+                    // WUL-19: Yarış durumu (race condition) koruması
+                    crate::hook::acquire_injection_lock();
+                    let _ = crate::injector::replace_text(correction.backspaces, &correction.to);
+                    crate::hook::release_injection_lock_and_flush();
+                    
+                    buf.clear(engine::Break::Applied);
+                    return LRESULT(1); // Boşluğu yut? Veya boşluğu yazması için bırakalım? 
+                    // Replace text metni yazar. Space sonradan gelebilir.
+                } else {
+                    buf.clear(engine::Break::WordEnd);
+                }
+            } else {
+                // Sadece Shift tuşunu takip etmek için (basitçe)
+                let shift = false; // TODO: handle shift state
+                buf.push(Stroke::new(key, shift));
+            }
+        }
     }
     
     CallNextHookEx(None, n_code, w_param, l_param)
