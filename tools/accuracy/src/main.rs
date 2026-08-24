@@ -160,7 +160,7 @@ fn run(
             continue;
         };
 
-        let decision = e.decide(&strokes, active, &AVAILABLE, &ctx, false);
+        let decision = e.decide(&strokes, active, &AVAILABLE, &ctx, None);
         out.total += 1;
 
         let ok = match (expect, &decision) {
