@@ -1,0 +1,11 @@
+[package]
+name = "accuracy"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+keymap = { path = "../../crates/keymap" }
+lang = { path = "../../crates/lang" }
+guards = { path = "../../crates/guards" }
+engine = { path = "../../crates/engine" }

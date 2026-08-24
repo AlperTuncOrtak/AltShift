@@ -1,0 +1,3 @@
+/target
+# Word lists are fetched, not vendored: see fetch-wordlists.sh
+/data
