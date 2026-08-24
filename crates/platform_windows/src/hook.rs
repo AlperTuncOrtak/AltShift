@@ -18,6 +18,9 @@ static HELD_KEYS: Mutex<Vec<INPUT>> = Mutex::new(Vec::new());
 /// belirten atomik bayrak.
 static INJECTION_LOCK: AtomicBool = AtomicBool::new(false);
 
+/// Istatistik: Toplam yapilan duzeltme sayisi
+pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 /// Enjeksiyon işlemine başlamadan önce çağrılır. 
 /// Bu andan itibaren kullanıcının bastığı tuşlar uygulamaya gitmez, tamponda birikir.
 pub fn acquire_injection_lock() {
@@ -83,7 +86,11 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     }
 
     // Normal işleyiş: Burada motor (engine) çağrılacak ve gerekirse engellenecek.
-    // Şimdilik pas geçiyoruz.
+    // Şimdilik pas geçiyoruz. Test için boşluğa basılınca sayaç artır.
+    if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0 {
+        TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
+    }
+    
     CallNextHookEx(None, n_code, w_param, l_param)
 }
 

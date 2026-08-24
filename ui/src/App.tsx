@@ -22,9 +22,18 @@ export default function App() {
     blacklist: [],
   });
   const [newApp, setNewApp] = useState("");
+  const [stats, setStats] = useState({ total_corrections: 0 });
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
+
+    // Poll stats every second
+    const interval = setInterval(() => {
+      invoke<{ total_corrections: number }>("get_stats")
+        .then(setStats)
+        .catch(console.error);
+    }, 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
@@ -47,7 +56,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex justify-center p-6 sm:p-12 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-2xl w-full space-y-8">
+      <div className="max-w-2xl w-full space-y-8 pb-12">
         
         {/* Header */}
         <header className="flex items-center gap-4 pb-6 border-b border-white/10">
@@ -63,6 +72,26 @@ export default function App() {
             <span className="text-xs font-medium text-zinc-300">{settings.enabled ? 'Active' : 'Paused'}</span>
           </div>
         </header>
+
+        {/* Live Statistics */}
+        <section className="grid grid-cols-2 gap-4">
+          <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5 flex flex-col gap-1">
+            <h3 className="text-xs font-medium text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+              <Activity className="w-4 h-4" /> Total Corrections
+            </h3>
+            <span className="text-3xl font-semibold text-white tracking-tight">
+              {stats.total_corrections.toLocaleString()}
+            </span>
+          </div>
+          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-5 flex flex-col gap-1">
+            <h3 className="text-xs font-medium text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+              <Zap className="w-4 h-4" /> Time Saved
+            </h3>
+            <span className="text-3xl font-semibold text-white tracking-tight">
+              {Math.floor(stats.total_corrections * 1.2)}s
+            </span>
+          </div>
+        </section>
 
         {/* Engine Settings */}
         <section className="space-y-4">

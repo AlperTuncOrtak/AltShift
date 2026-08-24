@@ -55,6 +55,19 @@ fn update_settings(settings: AppSettings, state: State<AppState>) {
     platform_windows::active_window::update_blacklist(settings.blacklist.clone());
 }
 
+#[derive(Serialize)]
+struct AppStats {
+    total_corrections: usize,
+}
+
+#[tauri::command]
+fn get_stats() -> AppStats {
+    use std::sync::atomic::Ordering;
+    AppStats {
+        total_corrections: platform_windows::hook::TOTAL_CORRECTIONS.load(Ordering::SeqCst),
+    }
+}
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -65,7 +78,7 @@ use tauri::{
 pub fn run() {
   tauri::Builder::default()
     .manage(AppState(Mutex::new(AppSettings::load_from_disk())))
-    .invoke_handler(tauri::generate_handler![get_settings, update_settings])
+    .invoke_handler(tauri::generate_handler![get_settings, update_settings, get_stats])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
