@@ -13,6 +13,15 @@ use lang::LanguageModel;
 pub struct Thresholds {
     /// Normal typing.
     pub margin: f64,
+    /// Extra margin demanded when recent words settled on the layout that is
+    /// already active.
+    ///
+    /// Character evidence alone cannot rescue a short real word like `verb` or
+    /// `внук` -- there simply are not enough letters. But people do not switch
+    /// language every word, so "the last few words were English" is evidence of
+    /// a different kind, and it is strongest exactly where the letters are
+    /// weakest.
+    pub stickiness: f64,
     /// Extra margin demanded of short words, divided by word length.
     ///
     /// A score is a mean over trigrams, so a four-letter word averages three
@@ -21,38 +30,32 @@ pub struct Thresholds {
     /// was four letters long -- including real words like `verb` and `внук`,
     /// which a flat threshold cannot separate from corpus junk.
     pub short_word_penalty: f64,
-    /// The first word after focus moved to a new window.
-    ///
-    /// Deliberately lower: this is exactly where the user has not yet checked
-    /// which layout is active, so a wrong-layout word is far more likely here
-    /// than mid-paragraph. We are encoding that prior rather than pretending
-    /// every position is equally suspect.
-    pub first_word_margin: f64,
 }
 
 impl Default for Thresholds {
     fn default() -> Self {
         // Set by sweeping the accuracy harness over held-out OpenSubtitles
-        // lists (see tools/accuracy). We take the configuration with the
-        // fewest misses that still fits the false-positive budget, since a
-        // missed word costs a keystroke and a mangled one costs a user.
+        // lists (see tools/accuracy). Among settings that fit the
+        // false-positive budget we take the one that recovers fastest.
         //
-        //   penalty  margin   false pos   false neg
-        //   0        1.2        0.090%      7.36%
-        //   3        0.6        0.080%      7.02%
-        //   4        0.3        0.096%      6.39%   <- chosen
-        //   5        0.1        0.096%      6.36%
-        //   6        0.0        0.080%      6.88%
+        //   sticky  margin  short   mangled   words lost   recovered
+        //   0.0     0.3     4       0.091%      1.07         100%
+        //   1.0     0.3     4       0.034%      1.07         100%
+        //   2.0     0.2     2       0.026%      1.07         100%   <- chosen
+        //   3.0     0.0     0       0.026%      1.07        99.83%
+        //   4.0     0.0     0       0.020%      1.06        98.08%
         //
-        // `short_word_penalty` earns its place: with a flat threshold, four
-        // letters accounted for nearly every surviving false positive --
-        // `verb`, `kerb`, `внук`, `лгут` -- and no flat value separated those
-        // from corpus junk. Trading base margin for length sensitivity cut
-        // misses from 7.36% to 6.39% at the same budget.
+        // Past stickiness 2.0 the prior starts blocking corrections that
+        // should happen, and recovery falls below 100%. We sit just under
+        // that edge, at a quarter of the budget: this is one corpus split,
+        // and real text will not match it exactly.
         //
-        // `first_word_margin` is NOT measured: the harness has no notion of
-        // focus changes. Validate it or delete the field (WUL-16).
-        Self { margin: 0.3, first_word_margin: 0.2, short_word_penalty: 4.0 }
+        // There is no separate first-word threshold. `recent: None` already
+        // marks a cold start, so stickiness simply does not apply there --
+        // one mechanism for one phenomenon. A measured first-word margin
+        // traded mangles for speed (1.0 gave 0.020% and 1.14 words lost) but
+        // its best value was just `margin` again, so the field was removed.
+        Self { margin: 0.2, short_word_penalty: 2.0, stickiness: 2.0 }
     }
 }
 
@@ -117,6 +120,10 @@ impl Engine {
 
     /// Decide what to do with a finished word.
     ///
+    /// `recent` is the layout the last few words settled on -- corrected to, or
+    /// left alone in. `None` means we have no history: a fresh focus, or the
+    /// start of typing.
+    ///
     /// `available` is the set of layouts the user actually has installed. It is
     /// a parameter rather than a constant because it does double duty: we
     /// cannot switch to a layout the OS does not have, and restricting the
@@ -128,7 +135,7 @@ impl Engine {
         current: LayoutId,
         available: &[LayoutId],
         ctx: &Context,
-        first_word_after_focus: bool,
+        recent: Option<LayoutId>,
     ) -> Decision {
         if strokes.is_empty() {
             return Decision::Leave(None);
@@ -172,13 +179,13 @@ impl Engine {
             }
         }
 
-        let base = if first_word_after_focus {
-            self.thresholds.first_word_margin
-        } else {
-            self.thresholds.margin
-        };
-        // Demand a wider margin where the evidence is thinner.
-        let required = base + self.thresholds.short_word_penalty / typed.chars().count() as f64;
+        // Demand a wider margin where the evidence is thinner...
+        let mut required =
+            self.thresholds.margin + self.thresholds.short_word_penalty / typed.chars().count() as f64;
+        // ...and where recent words agree with the layout already in use.
+        if recent == Some(current) {
+            required += self.thresholds.stickiness;
+        }
 
         match best {
             Some(c) if c.margin > required => Decision::Correct(c),
@@ -229,7 +236,7 @@ mod tests {
 
     #[test]
     fn wrong_layout_russian_is_corrected() {
-        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false);
+        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None);
         match d {
             Decision::Correct(c) => {
                 assert_eq!(c.from, "ghbdtn");
@@ -245,7 +252,7 @@ mod tests {
     #[test]
     fn correct_english_is_left_alone() {
         for word in ["hello", "world", "message", "there"] {
-            let d = engine().decide(&strokes(word), LayoutId::UsQwerty, &BOTH, &safe(), false);
+            let d = engine().decide(&strokes(word), LayoutId::UsQwerty, &BOTH, &safe(), None);
             assert!(
                 matches!(d, Decision::Leave(_)),
                 "{word} was already correct but got {d:?}"
@@ -259,7 +266,7 @@ mod tests {
         // Scores as strongly Cyrillic, but it is in a password field.
         let ctx = Context { is_password_field: Some(true), ..Context::default() };
         assert_eq!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &ctx, false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &ctx, None),
             Decision::Leave(Some(Reason::SecureField))
         );
     }
@@ -268,7 +275,7 @@ mod tests {
     #[test]
     fn only_installed_layouts_are_candidates() {
         let only_us = [LayoutId::UsQwerty];
-        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &only_us, &safe(), false);
+        let d = engine().decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &only_us, &safe(), None);
         assert!(matches!(d, Decision::Leave(_)));
     }
 
@@ -276,12 +283,12 @@ mod tests {
     fn a_rejected_word_is_never_corrected_again() {
         let mut e = engine();
         assert!(matches!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None),
             Decision::Correct(_)
         ));
         e.reject("ghbdtn");
         assert_eq!(
-            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), false),
+            e.decide(&strokes("ghbdtn"), LayoutId::UsQwerty, &BOTH, &safe(), None),
             Decision::Leave(Some(Reason::UserException))
         );
     }
@@ -292,7 +299,7 @@ mod tests {
         assert!(cyrillic.is_empty(), "sanity: latin text is not typeable on the RU table");
 
         let strokes = keymap::RU_YCUKEN.strokes_for("руддщ").unwrap();
-        match engine().decide(&strokes, LayoutId::RuYcuken, &BOTH, &safe(), false) {
+        match engine().decide(&strokes, LayoutId::RuYcuken, &BOTH, &safe(), None) {
             Decision::Correct(c) => {
                 assert_eq!(c.to, "hello");
                 assert_eq!(c.target_layout, LayoutId::UsQwerty);

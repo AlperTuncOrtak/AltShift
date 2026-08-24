@@ -19,22 +19,27 @@ if the alternative wins by a clear margin.
 
 Early. The engine works and is measured; nothing is wired to a keyboard yet.
 
-Measured on held-out OpenSubtitles word lists (Russian ↔ English):
+Measured on held-out OpenSubtitles word lists (Russian ↔ English), replaying
+runs of words and letting a correction switch the layout the way the real
+program does:
 
-| | rate |
+| | |
 |---|---|
-| Correct words wrongly rewritten | **0.096%** |
-| Wrong-layout words rescued | **93.6%** |
+| Recovers from a wrong layout | **100%** |
+| Words lost before it recovers | **1.07** |
+| Correct words wrongly rewritten | **0.026%** |
 
-The first number is the one that matters. A word we fail to fix costs you a
+The first word is always lost — nothing can see a layout mistake before you
+make it. 1.07 means that after that one word, it is essentially always right.
+
+The last number is the one that matters. A word we fail to fix costs you a
 keystroke; a word we wrongly "fix" makes you watch software corrupt your
-writing. The budget is 0.1%, and among the settings that fit it we take the
-one that rescues the most words.
+writing. The budget is 0.1%, and we sit at a quarter of it.
 
 Both the language model and the thresholds are set by measurement, not taste:
 `tools/accuracy` replays corpus words as keystrokes and scores the engine
-against a held-out split, so a change that sounds clever but loses accuracy
-has nowhere to hide.
+against a held-out split, so a change that sounds clever but loses accuracy has
+nowhere to hide.
 
 ## Two rules that do not bend
 
