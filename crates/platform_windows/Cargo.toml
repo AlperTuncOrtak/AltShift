@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 keymap = { path = "../keymap" }
+lazy_static = "1.4.0"
 
 [dependencies.windows]
 version = "0.52"
