@@ -3,6 +3,9 @@ name = "platform_windows"
 version = "0.1.0"
 edition = "2021"
 
+[dependencies]
+keymap = { path = "../keymap" }
+
 [dependencies.windows]
 version = "0.52"
 features = [
@@ -12,5 +15,6 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Accessibility",
     "Win32_System_Com",
-    "Win32_System_LibraryLoader"
+    "Win32_System_LibraryLoader",
+    "Win32_UI_TextServices"
 ]

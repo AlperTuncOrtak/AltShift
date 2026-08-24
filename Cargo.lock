@@ -37,6 +37,7 @@ version = "0.1.0"
 name = "platform_windows"
 version = "0.1.0"
 dependencies = [
+ "keymap",
  "windows",
 ]
 
