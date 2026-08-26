@@ -8,7 +8,7 @@ members = [
     "tools/accuracy",
     "crates/platform_windows",
     "ui/src-tauri"
-]
+, "crates/platform_macos"]
 
 [workspace.package]
 version = "0.1.0"

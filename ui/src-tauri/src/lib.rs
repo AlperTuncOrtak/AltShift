@@ -2,6 +2,12 @@ use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
 use tauri::State;
 
+#[cfg(target_os = "windows")]
+use platform_windows as platform;
+
+#[cfg(target_os = "macos")]
+use platform_macos as platform;
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
@@ -56,7 +62,7 @@ fn update_settings(settings: AppSettings, state: State<AppState>) {
     settings.save_to_disk();
 
     // Notify the engine/platform
-    platform_windows::active_window::update_blacklist(settings.blacklist.clone());
+    platform::active_window::update_blacklist(settings.blacklist.clone());
 }
 
 #[derive(Serialize)]
@@ -68,7 +74,7 @@ struct AppStats {
 fn get_stats() -> AppStats {
     use std::sync::atomic::Ordering;
     AppStats {
-        total_corrections: platform_windows::hook::TOTAL_CORRECTIONS.load(Ordering::SeqCst),
+        total_corrections: platform::hook::TOTAL_CORRECTIONS.load(Ordering::SeqCst),
     }
 }
 
@@ -97,11 +103,11 @@ pub fn run() {
             }
 
             // Initialize Language Models (trains trigrams in memory)
-            platform_windows::hook::init_engine();
+            platform::hook::init_engine();
 
-            // Start the Windows Low-Level Keyboard Hook in a background thread
+            // Start the Windows/macOS Low-Level Keyboard Hook in a background thread
             std::thread::spawn(|| {
-                if let Err(e) = platform_windows::hook::run_hook_loop() {
+                if let Err(e) = platform::hook::run_hook_loop() {
                     log::error!("Keyboard hook loop failed: {}", e);
                 }
             });
