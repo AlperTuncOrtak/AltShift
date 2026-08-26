@@ -140,6 +140,15 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            // Apply Mica backdrop on Windows 11 for native glass effect
+            #[cfg(target_os = "windows")]
+            {
+                use window_vibrancy::apply_mica;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = apply_mica(&window, Some(true)); // true = dark mica
+                }
+            }
+
             Ok(())
         })
         .on_window_event(|window, event| match event {

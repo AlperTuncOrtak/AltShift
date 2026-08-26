@@ -1,11 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Keyboard, ShieldAlert, Zap, X, Activity } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import "./index.css";
 
 type AppSettings = {
   enabled: boolean;
@@ -14,7 +10,61 @@ type AppSettings = {
   blacklist: string[];
 };
 
+// ── Fluent Toggle Switch ──────────────────────────────────────────────
+function FluentSwitch({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="fluent-switch">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+      <span className="track" />
+      <span className="thumb" />
+    </label>
+  );
+}
+
+// ── Fluent Slider ─────────────────────────────────────────────────────
+function FluentSlider({
+  value,
+  onChange,
+  onCommit,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  onCommit: (v: number) => void;
+}) {
+  return (
+    <input
+      type="range"
+      min={0}
+      max={100}
+      value={value}
+      className="w-full h-1 rounded-full appearance-none cursor-pointer"
+      style={{
+        background: `linear-gradient(to right, hsl(213 100% 62%) ${value}%, rgba(255,255,255,0.15) ${value}%)`,
+        outline: "none",
+      }}
+      onChange={(e) => onChange(Number(e.target.value))}
+      onMouseUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
+    />
+  );
+}
+
+// ── Fluent Separator ──────────────────────────────────────────────────
+const Sep = () => <div className="h-px bg-white/[0.06] mx-4" />;
+
+// ── Main App ──────────────────────────────────────────────────────────
 export default function App() {
+  const appWindow = getCurrentWindow();
+
   const [settings, setSettings] = useState<AppSettings>({
     enabled: true,
     defaultLayout: "us-qwerty",
@@ -22,21 +72,31 @@ export default function App() {
     blacklist: [],
   });
   const [newApp, setNewApp] = useState("");
-  const [stats, setStats] = useState({ total_corrections: 0 });
+  const [corrections, setCorrections] = useState(0);
+  const [prevCorrections, setPrev] = useState(0);
+  const counterRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
-
-    // Poll stats every second
-    const interval = setInterval(() => {
+    const id = setInterval(() => {
       invoke<{ total_corrections: number }>("get_stats")
-        .then(setStats)
+        .then((s) => {
+          setCorrections((prev) => {
+            if (s.total_corrections !== prev) {
+              counterRef.current?.classList.remove("pop");
+              // force reflow
+              void counterRef.current?.offsetWidth;
+              counterRef.current?.classList.add("pop");
+            }
+            return s.total_corrections;
+          });
+        })
         .catch(console.error);
     }, 1000);
-    return () => clearInterval(interval);
+    return () => clearInterval(id);
   }, []);
 
-  const updateSetting = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
+  const save = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
     invoke("update_settings", { settings: updated }).catch(console.error);
@@ -45,155 +105,195 @@ export default function App() {
   const addApp = () => {
     const app = newApp.trim().toLowerCase();
     if (app && !settings.blacklist.includes(app)) {
-      updateSetting("blacklist", [...settings.blacklist, app]);
+      save("blacklist", [...settings.blacklist, app]);
       setNewApp("");
     }
   };
 
-  const removeApp = (appToRemove: string) => {
-    updateSetting("blacklist", settings.blacklist.filter(app => app !== appToRemove));
-  };
-
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex justify-center p-6 sm:p-12 font-sans selection:bg-indigo-500/30">
-      <div className="max-w-2xl w-full space-y-8 pb-12">
-        
-        {/* Header */}
-        <header className="flex items-center gap-4 pb-6 border-b border-white/10">
-          <div className="bg-indigo-500 p-2 rounded-xl shadow-lg shadow-indigo-500/20">
-            <Keyboard className="w-6 h-6 text-white" />
+    <div className="h-screen flex flex-col overflow-hidden text-white/90">
+      {/* ── Title Bar (draggable) ── */}
+      <div
+        className="drag-region flex items-center justify-between px-4 pt-3 pb-2 shrink-0"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      >
+        <div className="flex items-center gap-2.5">
+          {/* Logo mark */}
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
+            style={{ background: "hsl(213 100% 62%)" }}
+          >
+            AS
           </div>
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight text-white">AltShift</h1>
-            <p className="text-sm text-zinc-400">Offline Privacy Keyboard Switcher</p>
-          </div>
-          <div className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
-            <div className={`w-2 h-2 rounded-full ${settings.enabled ? 'bg-emerald-400 animate-pulse' : 'bg-zinc-600'}`} />
-            <span className="text-xs font-medium text-zinc-300">{settings.enabled ? 'Active' : 'Paused'}</span>
-          </div>
-        </header>
+          <span className="font-semibold text-[15px] tracking-tight">AltShift</span>
+        </div>
 
-        {/* Live Statistics */}
-        <section className="grid grid-cols-2 gap-4">
-          <div className="bg-indigo-500/10 border border-indigo-500/20 rounded-2xl p-5 flex flex-col gap-1">
-            <h3 className="text-xs font-medium text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-              <Activity className="w-4 h-4" /> Total Corrections
-            </h3>
-            <span className="text-3xl font-semibold text-white tracking-tight">
-              {stats.total_corrections.toLocaleString()}
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          {/* Status pill */}
+          <span
+            className="fluent-badge"
+            style={
+              settings.enabled
+                ? { color: "#5af", borderColor: "rgba(85,170,255,0.25)", background: "rgba(85,170,255,0.1)" }
+                : { color: "rgba(255,255,255,0.4)" }
+            }
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${settings.enabled ? "bg-[#5af] animate-pulse" : "bg-white/30"}`}
+            />
+            {settings.enabled ? "Active" : "Paused"}
+          </span>
+
+          {/* Window controls */}
+          <button
+            className="ml-2 w-7 h-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors text-[18px] leading-none"
+            onClick={() => appWindow.hide()}
+            title="Close to tray"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {/* ── Body (scrollable) ── */}
+      <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-3">
+
+        {/* Stats row */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="fluent-card px-4 py-3">
+            <div className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-1">Corrections</div>
+            <span ref={counterRef} className="text-2xl font-semibold tabular-nums">
+              {corrections.toLocaleString()}
             </span>
           </div>
-          <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-5 flex flex-col gap-1">
-            <h3 className="text-xs font-medium text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-              <Zap className="w-4 h-4" /> Time Saved
-            </h3>
-            <span className="text-3xl font-semibold text-white tracking-tight">
-              {Math.floor(stats.total_corrections * 1.2)}s
+          <div className="fluent-card px-4 py-3">
+            <div className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-1">Time Saved</div>
+            <span className="text-2xl font-semibold tabular-nums">
+              {Math.floor(corrections * 1.2)}s
             </span>
           </div>
-        </section>
+        </div>
 
-        {/* Engine Settings */}
-        <section className="space-y-4">
-          <h2 className="text-sm font-medium text-indigo-400 uppercase tracking-widest flex items-center gap-2">
-            <Zap className="w-4 h-4" /> Engine Configuration
-          </h2>
-          
-          <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-1 overflow-hidden">
-            <div className="flex items-center justify-between p-4 hover:bg-white/[0.02] transition-colors rounded-xl">
+        {/* Engine section */}
+        <div>
+          <div className="text-[11px] font-medium text-white/35 uppercase tracking-widest px-1 mb-1.5">Engine</div>
+          <div className="fluent-card overflow-hidden">
+
+            {/* Master switch */}
+            <div className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors">
               <div>
-                <h3 className="font-medium text-white">Master Switch</h3>
-                <p className="text-sm text-zinc-400">Enable or disable all layout corrections</p>
+                <div className="text-[14px] font-medium">Auto-Correct</div>
+                <div className="text-[12px] text-white/45">Intercept & fix layout errors</div>
               </div>
-              <Switch 
-                checked={settings.enabled} 
-                onCheckedChange={(v) => updateSetting("enabled", v)} 
-              />
-            </div>
-            
-            <div className="h-px bg-white/5 mx-4" />
-            
-            <div className="flex items-center justify-between p-4 hover:bg-white/[0.02] transition-colors rounded-xl">
-              <div>
-                <h3 className="font-medium text-white">Default Layout</h3>
-                <p className="text-sm text-zinc-400">Fallback when no app context is known</p>
-              </div>
-              <Select value={settings.defaultLayout} onValueChange={(v) => updateSetting("defaultLayout", v)}>
-                <SelectTrigger className="w-[160px] bg-zinc-950 border-white/10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-900 border-white/10">
-                  <SelectItem value="us-qwerty">US QWERTY</SelectItem>
-                  <SelectItem value="uk-qwerty">UK QWERTY</SelectItem>
-                  <SelectItem value="de-qwertz">DE QWERTZ</SelectItem>
-                  <SelectItem value="fr-azerty">FR AZERTY</SelectItem>
-                </SelectContent>
-              </Select>
+              <FluentSwitch checked={settings.enabled} onChange={(v) => save("enabled", v)} />
             </div>
 
-            <div className="h-px bg-white/5 mx-4" />
+            <Sep />
 
-            <div className="p-4 hover:bg-white/[0.02] transition-colors rounded-xl space-y-4">
+            {/* Default layout */}
+            <div className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors">
+              <div>
+                <div className="text-[14px] font-medium">Default Layout</div>
+                <div className="text-[12px] text-white/45">Fallback when unknown</div>
+              </div>
+              <select
+                value={settings.defaultLayout}
+                onChange={(e) => save("defaultLayout", e.target.value)}
+                className="fluent-control text-[13px] font-mono px-2 py-1 text-white/80 cursor-pointer focus:outline-none"
+                style={{ minWidth: 110 }}
+              >
+                <option value="us-qwerty">US QWERTY</option>
+                <option value="ru-ycuken">RU YCUKEN</option>
+                <option value="de-qwertz">DE QWERTZ</option>
+                <option value="fr-azerty">FR AZERTY</option>
+              </select>
+            </div>
+
+            <Sep />
+
+            {/* Aggressiveness */}
+            <div className="px-4 py-3 hover:bg-white/[0.03] transition-colors space-y-2.5">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="font-medium text-white">Aggressiveness</h3>
-                  <p className="text-sm text-zinc-400">Confidence threshold for auto-correction</p>
+                  <div className="text-[14px] font-medium">Aggressiveness</div>
+                  <div className="text-[12px] text-white/45">Confidence threshold</div>
                 </div>
-                <span className="text-sm font-mono bg-zinc-950 px-2 py-1 rounded-md border border-white/10 text-indigo-300">
+                <span
+                  className="text-[13px] font-mono px-2 py-0.5 rounded-md border border-white/10 text-white/70"
+                  style={{ background: "rgba(255,255,255,0.06)" }}
+                >
                   {settings.aggressiveness}%
                 </span>
               </div>
-              <Slider 
-                value={[settings.aggressiveness]} 
-                onValueChange={(v) => setSettings({ ...settings, aggressiveness: v[0] })}
-                onValueCommit={(v) => updateSetting("aggressiveness", v[0])}
-                max={100} 
-                className="py-2"
+              <FluentSlider
+                value={settings.aggressiveness}
+                onChange={(v) => setSettings((s) => ({ ...s, aggressiveness: v }))}
+                onCommit={(v) => save("aggressiveness", v)}
               />
             </div>
           </div>
-        </section>
+        </div>
 
-        {/* Blacklist Settings */}
-        <section className="space-y-4 pt-4">
-          <h2 className="text-sm font-medium text-rose-400 uppercase tracking-widest flex items-center gap-2">
-            <ShieldAlert className="w-4 h-4" /> Application Blacklist
-          </h2>
-          
-          <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-5 space-y-4">
-            <p className="text-sm text-zinc-400">
-              AltShift will completely ignore keystrokes in these applications to protect passwords, game controls, and IDE shortcuts.
+        {/* Blacklist section */}
+        <div>
+          <div className="text-[11px] font-medium text-white/35 uppercase tracking-widest px-1 mb-1.5">
+            Excluded Apps
+          </div>
+          <div className="fluent-card px-4 py-3 space-y-3">
+            <p className="text-[12px] text-white/45">
+              AltShift stays silent in these apps — passwords, games, IDEs.
             </p>
-            
+
+            {/* Add input */}
             <div className="flex gap-2">
-              <Input 
-                placeholder="e.g. devenv.exe" 
+              <input
+                type="text"
+                placeholder="e.g. devenv.exe"
                 value={newApp}
                 onChange={(e) => setNewApp(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addApp()}
-                className="bg-zinc-950 border-white/10 font-mono text-sm"
+                className="flex-1 fluent-control px-3 py-1.5 text-[13px] font-mono text-white/80 focus:outline-none placeholder:text-white/25"
               />
-              <Button onClick={addApp} variant="secondary" className="bg-white/10 hover:bg-white/20 text-white">
-                Block App
-              </Button>
+              <button
+                onClick={addApp}
+                className="fluent-control px-3 py-1.5 text-[13px] font-medium text-white/80 hover:text-white transition-colors"
+              >
+                Block
+              </button>
             </div>
 
-            <div className="flex flex-wrap gap-2 pt-2">
-              {settings.blacklist.map(app => (
-                <div key={app} className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/20 text-rose-300 px-3 py-1.5 rounded-lg text-sm font-mono group">
+            {/* Tags */}
+            <div className="flex flex-wrap gap-1.5">
+              {settings.blacklist.map((app) => (
+                <div
+                  key={app}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-mono"
+                  style={{
+                    background: "rgba(255,80,80,0.08)",
+                    border: "1px solid rgba(255,80,80,0.18)",
+                    color: "rgba(255,140,140,0.9)",
+                  }}
+                >
                   {app}
-                  <button onClick={() => removeApp(app)} className="text-rose-400/50 hover:text-rose-300 focus:outline-none">
-                    <X className="w-4 h-4" />
+                  <button
+                    onClick={() => save("blacklist", settings.blacklist.filter((a) => a !== app))}
+                    className="opacity-50 hover:opacity-100 transition-opacity leading-none"
+                  >
+                    ×
                   </button>
                 </div>
               ))}
               {settings.blacklist.length === 0 && (
-                <p className="text-sm text-zinc-500 italic">No applications blocked.</p>
+                <span className="text-[12px] text-white/25 italic">None</span>
               )}
             </div>
           </div>
-        </section>
+        </div>
 
+        {/* Footer */}
+        <div className="text-center text-[11px] text-white/20 pt-1">
+          No network · No telemetry · Open source
+        </div>
       </div>
     </div>
   );

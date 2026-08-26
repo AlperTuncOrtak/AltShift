@@ -27,6 +27,7 @@ engine = { version = "0.1.0", path = "../../crates/engine" }
 lang = { version = "0.1.0", path = "../../crates/lang" }
 keymap = { version = "0.1.0", path = "../../crates/keymap" }
 guards = { version = "0.1.0", path = "../../crates/guards" }
+window-vibrancy = "0.8.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 platform_windows = { path = "../../crates/platform_windows" }
