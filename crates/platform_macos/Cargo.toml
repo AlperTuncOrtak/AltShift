@@ -8,6 +8,7 @@ license.workspace = true
 engine = { version = "0.1.0", path = "../engine" }
 guards = { version = "0.1.0", path = "../guards" }
 keymap = { version = "0.1.0", path = "../keymap" }
+platform = { path = "../platform" }
 lang = { version = "0.1.0", path = "../lang" }
 lazy_static = "1.5.0"
 

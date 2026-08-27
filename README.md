@@ -19,16 +19,27 @@ if the alternative wins by a clear margin.
 
 Early. The engine works and is measured; nothing is wired to a keyboard yet.
 
-Measured on held-out OpenSubtitles word lists (Russian ↔ English):
+Measured on held-out OpenSubtitles word lists (Russian ↔ English), replaying
+runs of words and letting a correction switch the layout the way the real
+program does:
 
-| | rate |
+| | |
 |---|---|
-| Correct words wrongly rewritten | **0.096%** |
-| Wrong-layout words rescued | **91.2%** |
+| Recovers from a wrong layout | **100%** |
+| Words lost before it recovers | **1.07** |
+| Correct words wrongly rewritten | **0.026%** |
 
-The first number is the one that matters. A word we fail to fix costs you a
+The first word is always lost — nothing can see a layout mistake before you
+make it. 1.07 means that after that one word, it is essentially always right.
+
+The last number is the one that matters. A word we fail to fix costs you a
 keystroke; a word we wrongly "fix" makes you watch software corrupt your
-writing. The budget is 0.1% and the thresholds are tuned to sit just under it.
+writing. The budget is 0.1%, and we sit at a quarter of it.
+
+Both the language model and the thresholds are set by measurement, not taste:
+`tools/accuracy` replays corpus words as keystrokes and scores the engine
+against a held-out split, so a change that sounds clever but loses accuracy has
+nowhere to hide.
 
 ## Privacy & What We Don't Do
 
@@ -58,10 +69,16 @@ anything on your screen.
 ## Build
 
 ```sh
-./fetch-wordlists.sh   # word lists are fetched, not committed
+./fetch-wordlists.sh   # required first: the desktop backends embed the models
 cargo test --workspace
-cargo run --release -p accuracy
+cargo run --release --bin accuracy   # accuracy
+cargo run --release --bin measure    # latency
 ```
+
+`fetch-wordlists.sh` is a build prerequisite, not an optional step. The shipped
+application embeds its language models rather than reading a `data/` directory
+on the user's machine, so the lists have to exist before the platform backends
+will compile.
 
 ## Layout
 

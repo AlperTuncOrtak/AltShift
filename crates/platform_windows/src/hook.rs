@@ -29,12 +29,11 @@ lazy_static::lazy_static! {
 }
 
 pub fn init_engine() {
-    let en_words = include_str!("../../../data/en.txt")
-        .lines()
-        .map(String::from);
-    let ru_words = include_str!("../../../data/ru.txt")
-        .lines()
-        .map(String::from);
+    // Embedded on purpose: the shipped app must carry its models, not look
+    // for a data/ directory on the user's machine. Building therefore requires
+    // ./fetch-wordlists.sh to have run -- see README.
+    let en_words = lang::parse_frequency_list(include_str!("../../../data/en.txt"));
+    let ru_words = lang::parse_frequency_list(include_str!("../../../data/ru.txt"));
 
     let mut engine = ENGINE.lock().unwrap();
     *engine = Engine::new()
