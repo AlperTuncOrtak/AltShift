@@ -80,6 +80,7 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     w_param: WPARAM,
     l_param: LPARAM,
 ) -> LRESULT {
+    let result = std::panic::catch_unwind(|| {
     if n_code < 0 {
         return CallNextHookEx(None, n_code, w_param, l_param);
     }
@@ -164,6 +165,15 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     }
 
     CallNextHookEx(None, n_code, w_param, l_param)
+
+    });
+    match result {
+        Ok(res) => res,
+        Err(err) => {
+            println!("PANIC IN HOOK: {:?}", err);
+            CallNextHookEx(None, n_code, w_param, l_param)
+        }
+    }
 }
 
 /// Hook'u sisteme kaydeder ve Windows mesaj döngüsünü başlatır.

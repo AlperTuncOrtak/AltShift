@@ -93,73 +93,22 @@ pub fn run() {
             update_settings,
             get_stats
         ])
-        .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-
-            // Initialize Language Models (trains trigrams in memory)
-            platform::hook::init_engine();
-
-            // Start the keyboard hook in a background thread.
-            std::thread::spawn(|| {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    platform::hook::run_hook_loop()
-                }));
-                match result {
-                    Ok(Ok(())) => {}
-                    Ok(Err(e)) => log::error!("Hook loop error: {}", e),
-                    Err(_) => log::error!("Hook loop panicked — continuing without hook"),
-                }
-            });
-
-            let quit_i = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&quit_i])?;
-
-            let _tray = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .show_menu_on_left_click(false)
-                .on_menu_event(|app, event| {
-                    if event.id() == "quit" {
-                        app.exit(0);
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click {
-                        button: MouseButton::Left,
-                        button_state: MouseButtonState::Up,
-                        ..
-                    } = event
-                    {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
-
-            // Apply Mica backdrop on Windows 11 for native glass effect
-            #[cfg(target_os = "windows")]
-            {
-                use window_vibrancy::apply_mica;
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = apply_mica(&window, Some(true)); // true = dark mica
+                .setup(|app| {
+            match app.get_webview_window("main") {
+                Some(window) => {
+                    log::info!("Main window found, showing it.");
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
+                None => {
+                    log::error!("CRITICAL: 'main' window NOT FOUND!");
+                }
             }
-
             Ok(())
         })
         .on_window_event(|window, event| match event {
             tauri::WindowEvent::CloseRequested { api, .. } => {
+                log::info!("CloseRequested event received! Hiding window...");
                 window.hide().unwrap();
                 api.prevent_close();
             }

@@ -17,10 +17,9 @@
         "height": 640,
         "minWidth": 420,
         "minHeight": 480,
-        "resizable": false,
+        "resizable": true,
         "fullscreen": false,
-        "decorations": false,
-        "transparent": true,
+        "decorations": true,
         "center": true,
         "visible": true,
         "focus": true
