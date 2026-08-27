@@ -94,13 +94,26 @@ pub fn run() {
             get_stats
         ])
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Logging is on in release too, not just debug. A keyboard hook
+            // that silently does nothing is the hardest kind of bug to report:
+            // the first "it doesn't work" cost a full build, download and
+            // install cycle to diagnose, with nothing on disk to look at.
+            //
+            // What gets written is decision metadata only -- word *length*,
+            // layouts, whether the field was a password, why a word was left
+            // alone. Never the word. A program that watches keystrokes writing
+            // user text to disk is precisely what this project promises not to
+            // do, and a log file is still disk.
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(log::LevelFilter::Info)
+                    .target(tauri_plugin_log::Target::new(
+                        tauri_plugin_log::TargetKind::LogDir {
+                            file_name: Some("altshift".into()),
+                        },
+                    ))
+                    .build(),
+            )?;
 
             // Initialize Language Models (trains trigrams in memory)
             platform::hook::init_engine();
