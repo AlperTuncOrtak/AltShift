@@ -1,12 +1,13 @@
+use lazy_static::lazy_static;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use lazy_static::lazy_static;
 
-use engine::{Engine, Buffer, Decision, Break};
-use keymap::{LayoutId, Stroke};
+use engine::{Break, Buffer, Decision, Engine};
 use guards::Context;
+use keymap::{LayoutId, Stroke};
 
-pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
 
 static INJECTION_LOCK: AtomicBool = AtomicBool::new(false);
 
@@ -21,12 +22,18 @@ pub fn init_engine() {
     // ./fetch-wordlists.sh to have run -- see README.
     let en_words = lang::parse_frequency_list(include_str!("../../../data/en.txt"));
     let ru_words = lang::parse_frequency_list(include_str!("../../../data/ru.txt"));
-    
+
     let mut engine = ENGINE.lock().unwrap();
     *engine = Engine::new()
-        .with_model(LayoutId::UsQwerty, lang::LanguageModel::train("en", en_words))
-        .with_model(LayoutId::RuYcuken, lang::LanguageModel::train("ru", ru_words));
-    
+        .with_model(
+            LayoutId::UsQwerty,
+            lang::LanguageModel::train("en", en_words),
+        )
+        .with_model(
+            LayoutId::RuYcuken,
+            lang::LanguageModel::train("ru", ru_words),
+        );
+
     println!("AltShift Engine initialized with EN and RU models.");
 }
 
@@ -52,7 +59,7 @@ mod macos_ffi {
     pub const kCGSessionEventTap: u32 = 1;
     pub const kCGHeadInsertEventTap: u32 = 0;
     pub const kCGEventTapOptionDefault: u32 = 0;
-    
+
     pub const kCGEventKeyDown: u32 = 10;
     pub const kCGEventFlagsChanged: u32 = 12;
     pub const kCGKeyboardEventKeycode: u32 = 9;
@@ -88,9 +95,13 @@ mod macos_ffi {
         ) -> CFRunLoopSourceRef;
 
         pub fn CFRunLoopGetCurrent() -> CFRunLoopRef;
-        pub fn CFRunLoopAddSource(rl: CFRunLoopRef, source: CFRunLoopSourceRef, mode: *const c_void);
+        pub fn CFRunLoopAddSource(
+            rl: CFRunLoopRef,
+            source: CFRunLoopSourceRef,
+            mode: *const c_void,
+        );
         pub fn CFRunLoopRun();
-        
+
         pub static kCFRunLoopCommonModes: *const c_void;
     }
 }
@@ -109,28 +120,36 @@ extern "C" fn cg_event_callback(
     }
 
     if type_ == macos_ffi::kCGEventKeyDown {
-        let keycode = unsafe { macos_ffi::CGEventGetIntegerValueField(event, macos_ffi::kCGKeyboardEventKeycode) } as u16;
-        
+        let keycode = unsafe {
+            macos_ffi::CGEventGetIntegerValueField(event, macos_ffi::kCGKeyboardEventKeycode)
+        } as u16;
+
         if let Some(key) = crate::key_map::mac_keycode_to_key(keycode) {
             let mut buf = BUFFER.lock().unwrap();
-            
+
             // Space (kelime sonu) - macOS keycode for space is 49
             if keycode == 49 {
                 let ctx = Context::default(); // TODO: get from active window
                 let current_layout = LayoutId::UsQwerty; // TODO: get from active window
-                
+
                 let decision = {
                     let mut engine = ENGINE.lock().unwrap();
-                    engine.decide(buf.strokes(), current_layout, &[LayoutId::UsQwerty, LayoutId::RuYcuken], &ctx, None)
+                    engine.decide(
+                        buf.strokes(),
+                        current_layout,
+                        &[LayoutId::UsQwerty, LayoutId::RuYcuken],
+                        &ctx,
+                        None,
+                    )
                 };
-                
+
                 if let Decision::Correct(correction) = decision {
                     TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
-                    
+
                     acquire_injection_lock();
                     let _ = crate::injector::replace_text(correction.backspaces, &correction.to);
                     release_injection_lock_and_flush();
-                    
+
                     buf.clear(Break::Applied);
                     return std::ptr::null_mut(); // Tuşu yut
                 } else {
@@ -142,17 +161,17 @@ extern "C" fn cg_event_callback(
             }
         }
     }
-    
+
     event // Tuşu sisteme geri bırak
 }
 
 #[cfg(target_os = "macos")]
 pub fn run_hook_loop() -> Result<(), String> {
     use macos_ffi::*;
-    
+
     unsafe {
         let event_mask = (1 << kCGEventKeyDown) | (1 << kCGEventFlagsChanged);
-        
+
         let tap = CGEventTapCreate(
             kCGSessionEventTap,
             kCGHeadInsertEventTap,
@@ -161,21 +180,23 @@ pub fn run_hook_loop() -> Result<(), String> {
             cg_event_callback,
             std::ptr::null_mut(),
         );
-        
+
         if tap.is_null() {
-            return Err("CGEventTapCreate failed. Do you have Accessibility permissions?".to_string());
+            return Err(
+                "CGEventTapCreate failed. Do you have Accessibility permissions?".to_string(),
+            );
         }
-        
+
         let run_loop_source = CFMachPortCreateRunLoopSource(std::ptr::null_mut(), tap, 0);
         let run_loop = CFRunLoopGetCurrent();
-        
+
         CFRunLoopAddSource(run_loop, run_loop_source, kCFRunLoopCommonModes);
         CGEventTapEnable(tap, true);
-        
+
         println!("Starting macOS CGEventTap loop...");
         CFRunLoopRun();
     }
-    
+
     Ok(())
 }
 

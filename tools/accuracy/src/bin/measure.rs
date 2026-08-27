@@ -38,13 +38,19 @@ fn main() {
         .with_model(LayoutId::UsQwerty, LanguageModel::train("en", en))
         .with_model(LayoutId::RuYcuken, LanguageModel::train("ru", ru))
         .with_thresholds(Thresholds::default());
-    println!("model load          {:>8.1} ms", start.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "model load          {:>8.1} ms",
+        start.elapsed().as_secs_f64() * 1000.0
+    );
 
     // The platform layer has positively cleared this field as ordinary text.
     // `Context::default()` would not do: it means "unknown", which the guards
     // treat as a password field, and the benchmark would then measure the
     // rejection path instead of the scoring it exists to time.
-    let ctx = Context { is_password_field: Some(false), ..Context::default() };
+    let ctx = Context {
+        is_password_field: Some(false),
+        ..Context::default()
+    };
 
     let both = [LayoutId::UsQwerty, LayoutId::RuYcuken];
     let one = [LayoutId::UsQwerty];
@@ -66,7 +72,11 @@ fn main() {
         println!(
             "{label:<20}{:>9.1} µs{:>11}",
             per_call as f64 / 1000.0,
-            if per_call <= DECIDE_BUDGET_US * 1000 { "ok" } else { "OVER" }
+            if per_call <= DECIDE_BUDGET_US * 1000 {
+                "ok"
+            } else {
+                "OVER"
+            }
         );
     }
 
@@ -103,7 +113,9 @@ fn time(mut f: impl FnMut()) -> u128 {
 /// the Russian table for them yields `None`, which is how this benchmark used
 /// to panic on its second statement.
 fn strokes(word: &str) -> Vec<Stroke> {
-    US_QWERTY.strokes_for(word).expect("benchmark words must be typeable on US QWERTY")
+    US_QWERTY
+        .strokes_for(word)
+        .expect("benchmark words must be typeable on US QWERTY")
 }
 
 /// Read at run time, not via `include_str!`.

@@ -5,7 +5,7 @@ mod macos_ffi {
     use std::os::raw::c_void;
     pub type TISInputSourceRef = *mut c_void;
     pub type CFStringRef = *const c_void;
-    
+
     #[link(name = "Carbon", kind = "framework")]
     extern "C" {
         pub fn TISCopyCurrentKeyboardInputSource() -> TISInputSourceRef;

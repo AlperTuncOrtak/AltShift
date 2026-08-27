@@ -7,6 +7,6 @@ pub mod active_window;
 pub mod backend;
 pub mod hook;
 pub mod injector;
+pub mod key_map;
 pub mod layout;
 pub mod password;
-pub mod key_map;

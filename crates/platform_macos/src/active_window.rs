@@ -9,7 +9,7 @@ pub fn get_active_window_info() -> Option<ActiveWindowInfo> {
         // TODO: macOS API (e.g. NSWorkspace::sharedWorkspace().frontmostApplication())
         None
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     None
 }

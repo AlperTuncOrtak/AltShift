@@ -6,8 +6,8 @@
 //! design, and it must stay testable without a Windows box.
 
 pub mod active_window;
-pub mod backend;
 pub mod app_memory;
+pub mod backend;
 pub mod hook;
 pub mod injector;
 pub mod layout;

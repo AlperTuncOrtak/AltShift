@@ -5,7 +5,7 @@ pub fn is_focused_field_password() -> Option<bool> {
         // and return Some(true/false).
         None
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     None
 }

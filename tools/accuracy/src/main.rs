@@ -50,8 +50,16 @@ fn main() {
     // says nothing about unseen text.
     let (en_train, en_test) = split(&en);
     let (ru_train, ru_test) = split(&ru);
-    println!("English {:>6} train {:>6} test", en_train.len(), en_test.len());
-    println!("Russian {:>6} train {:>6} test", ru_train.len(), ru_test.len());
+    println!(
+        "English {:>6} train {:>6} test",
+        en_train.len(),
+        en_test.len()
+    );
+    println!(
+        "Russian {:>6} train {:>6} test",
+        ru_train.len(),
+        ru_test.len()
+    );
 
     let t = Thresholds {
         margin: env("ALTSHIFT_MARGIN", Thresholds::default().margin),
@@ -71,7 +79,10 @@ fn main() {
     let ru_bad = simulate(&e, &ru_test, LayoutId::RuYcuken, LayoutId::UsQwerty);
 
     println!("\n{:-<70}", "");
-    println!("{:<34}{:>10}{:>12}{:>12}", "", "runs", "recovered", "mangled");
+    println!(
+        "{:<34}{:>10}{:>12}{:>12}",
+        "", "runs", "recovered", "mangled"
+    );
     for (label, o) in [
         ("already correct  English / US", &en_ok),
         ("already correct  Russian / RU", &ru_ok),
@@ -86,8 +97,14 @@ fn main() {
         );
     }
 
-    let mangled: usize = [&en_ok, &ru_ok, &en_bad, &ru_bad].iter().map(|o| o.mangled).sum();
-    let safe_words: usize = [&en_ok, &ru_ok, &en_bad, &ru_bad].iter().map(|o| o.safe_words).sum();
+    let mangled: usize = [&en_ok, &ru_ok, &en_bad, &ru_bad]
+        .iter()
+        .map(|o| o.mangled)
+        .sum();
+    let safe_words: usize = [&en_ok, &ru_ok, &en_bad, &ru_bad]
+        .iter()
+        .map(|o| o.safe_words)
+        .sum();
     let bad_runs = en_bad.runs + ru_bad.runs;
     let recovered = en_bad.recovered + ru_bad.recovered;
     let lost: usize = en_bad.words_lost + ru_bad.words_lost;
@@ -95,9 +112,19 @@ fn main() {
     let fp_rate = mangled as f64 / safe_words.max(1) as f64;
 
     println!("\n{:-<70}", "");
-    println!("recovered from a wrong layout   {:>7.2}%", recovered as f64 / bad_runs.max(1) as f64 * 100.0);
-    println!("words lost before recovery      {:>7.2}   (1.00 is the floor)", lost as f64 / recovered.max(1) as f64);
-    println!("correct words mangled           {:>7.3}%  (budget {:.3}%)", fp_rate * 100.0, FALSE_POSITIVE_BUDGET * 100.0);
+    println!(
+        "recovered from a wrong layout   {:>7.2}%",
+        recovered as f64 / bad_runs.max(1) as f64 * 100.0
+    );
+    println!(
+        "words lost before recovery      {:>7.2}   (1.00 is the floor)",
+        lost as f64 / recovered.max(1) as f64
+    );
+    println!(
+        "correct words mangled           {:>7.3}%  (budget {:.3}%)",
+        fp_rate * 100.0,
+        FALSE_POSITIVE_BUDGET * 100.0
+    );
 
     for o in [&en_ok, &ru_ok, &en_bad, &ru_bad] {
         for s in &o.samples {
@@ -131,7 +158,10 @@ struct Outcome {
 /// Replay runs of `words` (valid in `intended`) starting from layout `active`,
 /// letting corrections switch the layout as the real program would.
 fn simulate(e: &Engine, words: &[(String, u64)], intended: LayoutId, start: LayoutId) -> Outcome {
-    let ctx = Context { is_password_field: Some(false), ..Context::default() };
+    let ctx = Context {
+        is_password_field: Some(false),
+        ..Context::default()
+    };
     let mut o = Outcome::default();
 
     for chunk in words.chunks(RUN_LEN) {
@@ -145,7 +175,9 @@ fn simulate(e: &Engine, words: &[(String, u64)], intended: LayoutId, start: Layo
             // The keys a user presses to produce this word on the layout they
             // meant to be using. Those same keys are what reach us whichever
             // layout is actually active.
-            let Some(strokes) = intended.layout().strokes_for(word) else { continue };
+            let Some(strokes) = intended.layout().strokes_for(word) else {
+                continue;
+            };
             let decision = e.decide(&strokes, active, &AVAILABLE, &ctx, recent);
 
             if active == intended {
@@ -183,7 +215,10 @@ fn simulate(e: &Engine, words: &[(String, u64)], intended: LayoutId, start: Layo
 }
 
 fn env(key: &str, default: f64) -> f64 {
-    std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn load(path: impl AsRef<Path>, script: Script) -> std::io::Result<Vec<(String, u64)>> {

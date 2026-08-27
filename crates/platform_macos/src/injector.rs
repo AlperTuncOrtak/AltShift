@@ -6,7 +6,7 @@ mod macos_ffi {
     pub type UniChar = u16;
 
     pub const kCGEventSourceStateHIDSystemState: u32 = 1;
-    
+
     #[link(name = "CoreGraphics", kind = "framework")]
     extern "C" {
         pub fn CGEventSourceCreate(stateID: u32) -> CGEventSourceRef;
@@ -42,10 +42,10 @@ pub fn replace_text(backspace_count: usize, replacement: &str) -> Result<(), Str
             for _ in 0..backspace_count {
                 let down = CGEventCreateKeyboardEvent(source, delete_keycode, true);
                 let up = CGEventCreateKeyboardEvent(source, delete_keycode, false);
-                
+
                 CGEventPost(kCGHIDEventTap, down);
                 CGEventPost(kCGHIDEventTap, up);
-                
+
                 CFRelease(down);
                 CFRelease(up);
             }
