@@ -63,8 +63,6 @@ const Sep = () => <div className="h-px bg-white/[0.06] mx-4" />;
 
 // ── Main App ──────────────────────────────────────────────────────────
 export default function App() {
-  const appWindow = getCurrentWindow();
-
   const [settings, setSettings] = useState<AppSettings>({
     enabled: true,
     defaultLayout: "us-qwerty",
@@ -73,25 +71,34 @@ export default function App() {
   });
   const [newApp, setNewApp] = useState("");
   const [corrections, setCorrections] = useState(0);
-  const [prevCorrections, setPrev] = useState(0);
   const counterRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
-    invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
+    // Safe invoke that doesn't crash in standard browser
+    const safeInvoke = async <T,>(cmd: string, args?: any): Promise<T | null> => {
+      try {
+        return await invoke<T>(cmd, args);
+      } catch (e) {
+        console.error(`Invoke ${cmd} failed:`, e);
+        return null;
+      }
+    };
+
+    safeInvoke<AppSettings>("get_settings").then(s => s && setSettings(s));
+    
     const id = setInterval(() => {
-      invoke<{ total_corrections: number }>("get_stats")
-        .then((s) => {
+      safeInvoke<{ total_corrections: number }>("get_stats").then((s) => {
+        if (s) {
           setCorrections((prev) => {
             if (s.total_corrections !== prev) {
               counterRef.current?.classList.remove("pop");
-              // force reflow
               void counterRef.current?.offsetWidth;
               counterRef.current?.classList.add("pop");
             }
             return s.total_corrections;
           });
-        })
-        .catch(console.error);
+        }
+      });
     }, 1000);
     return () => clearInterval(id);
   }, []);
@@ -99,7 +106,18 @@ export default function App() {
   const save = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
     const updated = { ...settings, [key]: value };
     setSettings(updated);
-    invoke("update_settings", { settings: updated }).catch(console.error);
+    try {
+      invoke("update_settings", { settings: updated }).catch(console.error);
+    } catch(e) {}
+  };
+
+  const handleClose = () => {
+    try {
+      const appWindow = getCurrentWindow();
+      appWindow.hide();
+    } catch(e) {
+      console.error(e);
+    }
   };
 
   const addApp = () => {
@@ -147,7 +165,7 @@ export default function App() {
           {/* Window controls */}
           <button
             className="ml-2 w-7 h-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors text-[18px] leading-none"
-            onClick={() => appWindow.hide()}
+            onClick={handleClose}
             title="Close to tray"
           >
             ×

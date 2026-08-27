@@ -2,7 +2,6 @@ use crate::injector::ALTSHIFT_MAGIC_INFO;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
@@ -172,10 +171,10 @@ pub unsafe extern "system" fn keyboard_hook_proc(
 /// Bu nedenle ayrı bir thread içinde çalıştırılmalıdır.
 pub fn run_hook_loop() -> Result<(), String> {
     unsafe {
-        let h_instance = GetModuleHandleW(None).map_err(|e| e.to_string())?;
-
-        let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), h_instance, 0)
-            .map_err(|e| e.to_string())?;
+        // WH_KEYBOARD_LL is a global hook — hInstance MUST be None (null).
+        // Passing the exe module handle here causes SetWindowsHookExW to fail.
+        let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0)
+            .map_err(|e| format!("SetWindowsHookExW failed: {}", e))?;
 
         // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.
         let mut msg = MSG::default();

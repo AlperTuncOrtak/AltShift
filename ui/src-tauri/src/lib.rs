@@ -105,10 +105,15 @@ pub fn run() {
             // Initialize Language Models (trains trigrams in memory)
             platform::hook::init_engine();
 
-            // Start the Windows/macOS Low-Level Keyboard Hook in a background thread
+            // Start the keyboard hook in a background thread.
             std::thread::spawn(|| {
-                if let Err(e) = platform::hook::run_hook_loop() {
-                    log::error!("Keyboard hook loop failed: {}", e);
+                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    platform::hook::run_hook_loop()
+                }));
+                match result {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => log::error!("Hook loop error: {}", e),
+                    Err(_) => log::error!("Hook loop panicked — continuing without hook"),
                 }
             });
 
@@ -146,6 +151,8 @@ pub fn run() {
                 use window_vibrancy::apply_mica;
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = apply_mica(&window, Some(true)); // true = dark mica
+                    let _ = window.show();
+                    let _ = window.set_focus();
                 }
             }
 

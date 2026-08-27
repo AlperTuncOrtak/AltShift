@@ -53,8 +53,7 @@
   }
 
   body {
-    /* Transparent for Mica to show through */
-    background: transparent !important;
+    background: #1a1a1f !important;
     color: hsl(var(--foreground));
     /* Fluent uses Segoe UI Variable; fallback to system-ui */
     font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
