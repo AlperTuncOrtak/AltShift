@@ -52,7 +52,13 @@ pub fn init_engine() {
             lang::LanguageModel::train("ru", ru_words),
         );
 
-    println!("AltShift Engine initialized with EN and RU models.");
+    // Bu satırlar tanı için: log dosyasının boş olması ile uygulamanın hiç
+    // çalışmaması aynı şeye benziyordu ve aradaki farkı anlamak bir derleme,
+    // indirme ve kurulum turuna mal oldu. Artık program açıldıysa log konuşur.
+    log::info!(
+        "engine ready: installed layouts = {:?}",
+        crate::layout::get_installed_layouts()
+    );
 }
 
 /// Enjeksiyon işlemine başlamadan önce çağrılır.
@@ -123,14 +129,33 @@ pub unsafe extern "system" fn keyboard_hook_proc(
         return LRESULT(1);
     }
 
-    // Normal işleyiş: Burada motor (engine) çağrılacak ve gerekirse engellenecek.
-    if hook_struct.flags.0 & windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP.0 == 0 {
-        if let Some(key) = crate::vk_map::vk_to_key(hook_struct.vkCode as u16) {
-            let mut buf = BUFFER.lock().unwrap();
+    // Kelime sınırı tuşları. Bunlar `Key` enum'unda YOK ve olmamalı: enum
+    // yalnızca düzenler arasında farklılaşan tuşları taşıyor, boşluk her
+    // düzende boşluk.
+    //
+    // Karar bloğu daha önce `vk_to_key(...)` başarılı olursa çalışacak şekilde
+    // yazılmıştı. Boşluk hiçbir zaman bir `Key`e çevrilemediği için o blok
+    // hiç çalışmadı -- uygulama kurulup açılıyor, hook takılıyor, tuşlar
+    // geliyordu ve motor tek bir kelimeye bile bakmıyordu.
+    const VK_SPACE: u16 = 0x20;
+    const VK_RETURN: u16 = 0x0D;
+    const VK_TAB: u16 = 0x09;
+    const VK_BACK: u16 = 0x08;
 
-            // Eğer boşluk tuşuna basıldıysa (kelime sonu)
-            if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0
-            {
+    /// Basılması tampona dokunmaması gereken tuşlar.
+    ///
+    /// Büyük harf yazmak için Shift'e basmak tamponu düşürseydi, büyük harfle
+    /// başlayan hiçbir kelime düzeltilemezdi.
+    fn is_modifier(vk: u16) -> bool {
+        matches!(vk, 0x10..=0x12 | 0x14 | 0x5B..=0x5C | 0xA0..=0xA5)
+    }
+
+    if hook_struct.flags.0 & windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP.0 == 0 {
+        let vk = hook_struct.vkCode as u16;
+        let mut buf = BUFFER.lock().unwrap();
+
+        match vk {
+            VK_SPACE | VK_RETURN | VK_TAB => {
                 let hwnd = unsafe { GetForegroundWindow() };
 
                 // Odak değiştiyse önceki kelimeler artık bu bağlama ait değil.
@@ -236,16 +261,30 @@ pub unsafe extern "system" fn keyboard_hook_proc(
                         buf.clear(engine::Break::WordEnd);
                     }
                 }
-            } else {
-                // Shift durumu gerçekten okunuyor: sabit `false` bırakmak büyük
-                // harfle başlayan her kelimeyi yanlış render etmek demekti.
-                let shift = unsafe {
-                    GetKeyState(windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32)
-                        as u16
-                        & 0x8000
-                        != 0
-                };
-                buf.push(Stroke::new(key, shift));
+            }
+            VK_BACK => {
+                // Kullanıcının sildiği karakter tampondan da düşmeli, yoksa
+                // tampon ekranda olmayan tuşları hatırlar.
+                buf.pop();
+            }
+            _ => {
+                if let Some(key) = crate::vk_map::vk_to_key(vk) {
+                    // Shift durumu gerçekten okunuyor: sabit `false` bırakmak
+                    // büyük harfle başlayan her kelimeyi yanlış render etmek
+                    // demekti.
+                    let shift = unsafe {
+                        GetKeyState(windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32)
+                            as u16
+                            & 0x8000
+                            != 0
+                    };
+                    buf.push(Stroke::new(key, shift));
+                } else if !is_modifier(vk) {
+                    // Ne karakter ne sınır: ok tuşları, Home, Delete, F1...
+                    // İmleç yer değiştirmiş olabilir, yani tampon artık
+                    // imlecin önündeki metne karşılık gelmiyor.
+                    buf.clear(engine::Break::CaretMoved);
+                }
             }
         }
     }
@@ -262,6 +301,8 @@ pub fn run_hook_loop() -> Result<(), String> {
         // Passing the exe module handle here causes SetWindowsHookExW to fail.
         let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0)
             .map_err(|e| format!("SetWindowsHookExW failed: {}", e))?;
+
+        log::info!("keyboard hook installed");
 
         // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.
         let mut msg = MSG::default();
