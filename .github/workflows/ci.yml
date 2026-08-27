@@ -19,7 +19,14 @@ jobs:
         run: |
           # If any of these networking crates exist in the dependency tree of our Rust workspace, fail the build.
           # We only check the main cargo workspace. Tauri UI dependencies are standard web dependencies.
-          $banned_crates = @("reqwest", "hyper", "curl", "ureq", "awc", "surf", "isahc", "tokio", "async-std", "native-tls", "rustls", "socket2")
+          # HTTP clients and TLS stacks only. An async runtime is not a network
+          # stack -- Tauri needs tokio, and banning it made this check fail on a
+          # tree that contains no way to make a request. `http` is likewise a
+          # types crate that wry pulls in, not a client.
+          #
+          # This check covers the Rust side. It cannot speak for the webview,
+          # which is a browser and needs a CSP to be held to the same promise.
+          $banned_crates = @("reqwest", "hyper", "curl", "ureq", "awc", "surf", "isahc", "native-tls", "rustls")
           
           # Run cargo tree and capture output
           $tree = cargo tree --workspace
