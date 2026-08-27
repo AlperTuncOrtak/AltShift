@@ -26,6 +26,13 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      # The desktop backends embed their language models with include_str!, so
+      # the lists must exist before cargo runs. Without this the release build
+      # fails on a missing data/en.txt -- CI has this step, release did not.
+      - name: Fetch Wordlists
+        shell: bash
+        run: ./fetch-wordlists.sh
+
       - name: Install Frontend Dependencies
         working-directory: ./ui
         run: npm install
