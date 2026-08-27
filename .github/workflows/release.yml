@@ -43,6 +43,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: ./ui
+          # __VERSION__ is read from ui/src-tauri/tauri.conf.json, NOT from the
+          # git tag. Pushing a v0.1.1 tag without bumping that file publishes
+          # the new build under the old version -- which is how v0.1.1's
+          # installer ended up inside the v0.1.0 draft, labelled 0.1.0.
           tagName: v__VERSION__
           releaseName: 'AltShift v__VERSION__'
           releaseBody: 'AltShift - Offline Privacy Keyboard Switcher. See the assets below to download and install.'
