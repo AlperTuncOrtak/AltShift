@@ -1,7 +1,7 @@
 use keymap::LayoutId;
 use std::ptr;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
-use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayoutList;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyboardLayout, GetKeyboardLayoutList};
 use windows::Win32::UI::TextServices::HKL;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowThreadProcessId, PostMessageW, WM_INPUTLANGCHANGEREQUEST,
@@ -43,6 +43,32 @@ pub fn get_installed_layouts() -> Vec<LayoutId> {
         }
 
         layouts
+    }
+}
+
+/// Verilen pencerenin o an aktif olan klavye düzenini okur.
+///
+/// Motorun ilk sorusu "kullanıcı şu an hangi düzende yazıyor" -- bunu sabit
+/// varsaymak, kullanıcı Rusça düzendeyken yazdıklarını Latin okumaya çalışmak
+/// demek olurdu.
+///
+/// Düzen pencere (thread) başına tutulduğu için sorgu odaktaki pencerenin
+/// thread'ine yapılır, sürecin geneline değil.
+pub fn get_current_layout(hwnd: HWND) -> Option<LayoutId> {
+    if hwnd.0 == 0 {
+        return None;
+    }
+    unsafe {
+        let thread_id = GetWindowThreadProcessId(hwnd, None);
+        let hkl = GetKeyboardLayout(thread_id);
+        match hkl.0 as usize & 0xFFFF {
+            0x0409 => Some(LayoutId::UsQwerty),
+            0x0419 => Some(LayoutId::RuYcuken),
+            // Desteklemediğimiz bir düzen: None dönmek, motorun hiç
+            // çalışmaması anlamına gelir. Türkçe klavyede yazarken araya
+            // girmemesi tam olarak istediğimiz davranış.
+            _ => None,
+        }
     }
 }
 

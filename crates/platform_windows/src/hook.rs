@@ -2,10 +2,11 @@ use crate::injector::ALTSHIFT_MAGIC_INFO;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
-    MSG, WH_KEYBOARD_LL,
+    CallNextHookEx, GetForegroundWindow, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
+    HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL,
 };
 
 /// Enjeksiyon sırasında (düzeltme yapılırken) basılan tuşların tutulduğu tampon.
@@ -24,6 +25,11 @@ pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
 lazy_static::lazy_static! {
+    /// Son kelimelerin oturduğu düzen. Karakter kanıtı kısa kelimelerde
+    /// yetersiz kalıyor; "önceki kelimeler buradaydı" başka türden bir kanıt.
+    pub static ref RECENT_LAYOUT: Mutex<Option<LayoutId>> = Mutex::new(None);
+    /// Odak değişimini yakalamak için son görülen pencere.
+    static ref LAST_HWND: Mutex<isize> = Mutex::new(0);
     pub static ref ENGINE: Mutex<Engine> = Mutex::new(Engine::new());
     pub static ref BUFFER: Mutex<Buffer> = Mutex::new(Buffer::new());
 }
@@ -125,38 +131,120 @@ pub unsafe extern "system" fn keyboard_hook_proc(
             // Eğer boşluk tuşuna basıldıysa (kelime sonu)
             if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0
             {
-                // Şimdilik default Context ve LayoutId ile karar verelim
-                let ctx = Context::default(); // TODO: get from active window
-                let current_layout = LayoutId::UsQwerty; // TODO: get from active window
+                let hwnd = unsafe { GetForegroundWindow() };
 
-                let decision = {
-                    let mut engine = ENGINE.lock().unwrap();
-                    engine.decide(
-                        buf.strokes(),
-                        current_layout,
-                        &[LayoutId::UsQwerty, LayoutId::RuYcuken],
-                        &ctx,
-                        None,
-                    )
+                // Odak değiştiyse önceki kelimeler artık bu bağlama ait değil.
+                // Hem tamponu hem de "son kelimeler hangi düzendeydi" geçmişini
+                // düşürmek gerekiyor; taşımak, yanlış bağlamla karar vermek olur.
+                let focus_changed = {
+                    let mut last = LAST_HWND.lock().unwrap();
+                    let changed = *last != hwnd.0;
+                    *last = hwnd.0;
+                    changed
+                };
+                if focus_changed {
+                    buf.clear(engine::Break::FocusChange);
+                    *RECENT_LAYOUT.lock().unwrap() = None;
+                }
+
+                // Gerçek bağlam. Buranın `Context::default()` olması, guards'ın
+                // her kelimeyi şifre alanı sayıp engellemesi demekti -- motor
+                // skorlamaya hiç ulaşmıyordu.
+                // ponytail: UI Automation sorgusu her kelimede yapılıyor ve bu
+                // kod hook callback'inin içinde. Yavaşsa iki sorun birden:
+                // yazarken takılma, ve callback ~300 ms'de dönmezse Windows'un
+                // hook'u sessizce kaldırması.
+                //
+                // Odak başına önbelleklemek cazip ama güvenli değil:
+                // GetForegroundWindow en üstteki pencereyi verir, aynı pencere
+                // içinde kullanıcı adından şifre alanına geçmek onu değiştirmez
+                // -- yani önbellek tam korumamız gereken anda bayatlar.
+                //
+                // Doğru çözüm önbellek değil, kararı hook thread'inden çıkarmak.
+                // Önce Windows'ta ölçelim: gerçekten yavaş mı?
+                let ctx = Context {
+                    is_password_field: crate::password::is_password_field(hwnd),
+                    app_blocked: crate::active_window::is_active_app_blocked(),
+                    sentence_initial: false,
                 };
 
-                if let Decision::Correct(correction) = decision {
-                    TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
-                    // Düzeltmeyi uygula (enjekte et)
-                    // WUL-19: Yarış durumu (race condition) koruması
-                    crate::hook::acquire_injection_lock();
-                    let _ = crate::injector::replace_text(correction.backspaces, &correction.to);
-                    crate::hook::release_injection_lock_and_flush();
-
-                    buf.clear(engine::Break::Applied);
-                    return LRESULT(1); // Boşluğu yut? Veya boşluğu yazması için bırakalım?
-                                       // Replace text metni yazar. Space sonradan gelebilir.
-                } else {
+                // Kullanıcının o an hangi düzende yazdığı. Desteklemediğimiz bir
+                // düzense (Türkçe, Almanca...) hiç karışmıyoruz.
+                let Some(current_layout) = crate::layout::get_current_layout(hwnd) else {
                     buf.clear(engine::Break::WordEnd);
+                    return CallNextHookEx(None, n_code, w_param, l_param);
+                };
+
+                // Sadece gerçekten kurulu düzenler aday olabilir: olmayan bir
+                // düzene geçemeyiz, ve aday kümesini daraltmak yanlış
+                // düzeltmeleri de azaltıyor.
+                let available = crate::layout::get_installed_layouts();
+                let recent = *RECENT_LAYOUT.lock().unwrap();
+
+                let decision = {
+                    let engine = ENGINE.lock().unwrap();
+                    engine.decide(buf.strokes(), current_layout, &available, &ctx, recent)
+                };
+
+                // Tanı için: bir kelimeye neden dokunulmadığı, kullanıcı
+                // "çalışmıyor" dediğinde tek tek koda bakmadan görülebilsin.
+                //
+                // Kelimenin KENDİSİ asla loglanmıyor -- sadece uzunluğu ve
+                // kararın gerekçesi. Tuş dinleyen bir programın kullanıcı
+                // metnini diske yazması, yapmayacağız dediğimiz şeyin ta kendisi.
+                log::info!(
+                    "word len={} layout={:?} available={:?} pwd={:?} blocked={} -> {}",
+                    buf.len(),
+                    current_layout,
+                    available,
+                    ctx.is_password_field,
+                    ctx.app_blocked,
+                    match &decision {
+                        Decision::Correct(c) => format!("CORRECT to {:?}", c.target_layout),
+                        Decision::Leave(Some(reason)) => format!("leave: {reason:?}"),
+                        Decision::Leave(None) => "leave: below threshold".to_string(),
+                    }
+                );
+
+                match decision {
+                    Decision::Correct(correction) => {
+                        TOTAL_CORRECTIONS.fetch_add(1, Ordering::SeqCst);
+
+                        // WUL-19: enjeksiyon sürerken gelen tuşlar tutulur.
+                        crate::hook::acquire_injection_lock();
+                        // Boşluk da düzeltmenin parçası olarak yazılıyor: orijinal
+                        // boşluğu yutup buraya eklemek, sıranın karışmasını
+                        // imkânsız kılar.
+                        let text = format!("{} ", correction.to);
+                        let injected = crate::injector::replace_text(correction.backspaces, &text);
+                        crate::hook::release_injection_lock_and_flush();
+
+                        if injected.is_ok() {
+                            // Düzeltmenin asıl faydası burada: bundan sonrası
+                            // zaten doğru düzende yazılır.
+                            let _ = crate::layout::switch_layout(hwnd, correction.target_layout);
+                            *RECENT_LAYOUT.lock().unwrap() = Some(correction.target_layout);
+                        }
+
+                        buf.clear(engine::Break::Applied);
+                        return LRESULT(1);
+                    }
+                    Decision::Leave(_) => {
+                        // Dokunmadığımız kelime, o düzenin doğru olduğuna dair
+                        // kanıt: bir sonraki kelimede bağlam olarak kullanılıyor.
+                        *RECENT_LAYOUT.lock().unwrap() = Some(current_layout);
+                        buf.clear(engine::Break::WordEnd);
+                    }
                 }
             } else {
-                // Sadece Shift tuşunu takip etmek için (basitçe)
-                let shift = false; // TODO: handle shift state
+                // Shift durumu gerçekten okunuyor: sabit `false` bırakmak büyük
+                // harfle başlayan her kelimeyi yanlış render etmek demekti.
+                let shift = unsafe {
+                    GetKeyState(windows::Win32::UI::Input::KeyboardAndMouse::VK_SHIFT.0 as i32)
+                        as u16
+                        & 0x8000
+                        != 0
+                };
                 buf.push(Stroke::new(key, shift));
             }
         }

@@ -2420,6 +2420,7 @@ dependencies = [
  "keymap",
  "lang",
  "lazy_static",
+ "log",
  "platform",
  "windows 0.52.0",
 ]
