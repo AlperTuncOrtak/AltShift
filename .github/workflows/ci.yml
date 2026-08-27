@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Verify No Network Crates
+        run: |
+          # If any of these networking crates exist in the dependency tree of our Rust workspace, fail the build.
+          # We only check the main cargo workspace. Tauri UI dependencies are standard web dependencies.
+          # HTTP clients and TLS stacks only. An async runtime is not a network
+          # stack -- Tauri needs tokio, and banning it made this check fail on a
+          # tree that contains no way to make a request. `http` is likewise a
+          # types crate that wry pulls in, not a client.
+          #
+          # This check covers the Rust side. It cannot speak for the webview,
+          # which is a browser and needs a CSP to be held to the same promise.
+          $banned_crates = @("reqwest", "hyper", "curl", "ureq", "awc", "surf", "isahc", "native-tls", "rustls")
+          
+          # Run cargo tree and capture output
+          $tree = cargo tree --workspace
+          
+          foreach ($crate in $banned_crates) {
+              if ($tree -match "\b$crate\b") {
+                  Write-Error "Privacy violation! Banned network crate found: $crate"
+                  exit 1
+              }
+          }
+          Write-Host "Privacy check passed: No network crates found in the dependency tree."
+
+      - name: Cache Wordlists
+        id: cache-wordlists
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: ${{ runner.os }}-wordlists-2018
+
+      - name: Fetch Wordlists
+        if: steps.cache-wordlists.outputs.cache-hit != 'true'
+        shell: bash
+        run: ./fetch-wordlists.sh
+
+      - name: Run Tests
+        run: |
+          cargo test --workspace
+          cargo clippy -- -D warnings
+          cargo fmt --check
+
+      - name: Run Accuracy Gate
+        run: cargo run --release --bin accuracy
+
+  # The engine is platform-free by design. Without a non-Windows job that claim
+  # rots silently: an unconditional Windows dependency compiles fine on the
+  # Windows runner and only breaks on a contributor's machine.
+  core-cross-platform:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache Wordlists
+        id: cache-wordlists
+        uses: actions/cache@v4
+        with:
+          path: data/
+          key: ${{ runner.os }}-wordlists-2018
+      - name: Fetch Wordlists
+        if: steps.cache-wordlists.outputs.cache-hit != 'true'
+        run: ./fetch-wordlists.sh
+      - name: Build and test everything
+        run: cargo test --workspace
+      - name: Accuracy gate
+        run: cargo run --release --bin accuracy

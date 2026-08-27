@@ -34,6 +34,20 @@ const SMOOTHING: f64 = 0.5;
 /// enough that an out-of-vocabulary inflection can still win on trigrams.
 const DICT_BONUS: f64 = 6.0;
 
+/// Parse a frequency list -- one `word count` pair per line -- into training
+/// input.
+///
+/// The format is what the corpus ships. Keeping the parser here means the
+/// desktop app, the accuracy harness and the benchmark cannot disagree about
+/// it; when they did, one of them silently trained on zero words and still
+/// reported success.
+pub fn parse_frequency_list(text: &str) -> impl Iterator<Item = (String, u64)> + '_ {
+    text.lines().filter_map(|line| {
+        let (word, count) = line.trim().split_once(' ')?;
+        Some((word.to_lowercase(), count.trim().parse().ok()?))
+    })
+}
+
 pub struct LanguageModel {
     pub name: String,
     /// Word to corpus occurrence count.
@@ -73,8 +87,10 @@ impl LanguageModel {
             // for a model whose whole job is to recognise foreign text.
             let weight = 1.0 + (count.max(1) as f64).ln();
 
-            let padded: Vec<char> =
-                std::iter::once(START).chain(word.chars()).chain([END]).collect();
+            let padded: Vec<char> = std::iter::once(START)
+                .chain(word.chars())
+                .chain([END])
+                .collect();
             for w in padded.windows(3) {
                 *trigrams.entry((w[0], w[1], w[2])).or_insert(0.0) += weight;
                 *bigrams.entry((w[0], w[1])).or_insert(0.0) += weight;
@@ -84,7 +100,14 @@ impl LanguageModel {
             *words.entry(word).or_insert(0) += count;
         }
 
-        Self { name: name.into(), words, max_count, trigrams, bigrams, vocab: alphabet.len().max(1) }
+        Self {
+            name: name.into(),
+            words,
+            max_count,
+            trigrams,
+            bigrams,
+            vocab: alphabet.len().max(1),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -109,7 +132,10 @@ impl LanguageModel {
             return f64::NEG_INFINITY;
         }
 
-        let padded: Vec<char> = std::iter::once(START).chain(lower.chars()).chain([END]).collect();
+        let padded: Vec<char> = std::iter::once(START)
+            .chain(lower.chars())
+            .chain([END])
+            .collect();
         let mut total = 0.0;
         let mut n = 0usize;
 
@@ -121,7 +147,11 @@ impl LanguageModel {
             n += 1;
         }
 
-        let mean = if n == 0 { f64::NEG_INFINITY } else { total / n as f64 };
+        let mean = if n == 0 {
+            f64::NEG_INFINITY
+        } else {
+            total / n as f64
+        };
         mean + self.dictionary_bonus(&lower)
     }
 
@@ -132,7 +162,9 @@ impl LanguageModel {
     /// `1 +` also keeps a single-count corpus (as in tests) from collapsing to
     /// a zero denominator.
     fn dictionary_bonus(&self, lower: &str) -> f64 {
-        let Some(&count) = self.words.get(lower) else { return 0.0 };
+        let Some(&count) = self.words.get(lower) else {
+            return 0.0;
+        };
         DICT_BONUS * (1.0 + count as f64).ln() / (1.0 + self.max_count as f64).ln()
     }
 }
@@ -196,7 +228,10 @@ mod tests {
     #[test]
     fn gibberish_loses_to_its_other_reading() {
         let (en, ru) = (english(), russian());
-        assert!(ru.score("привет") > en.score("ghbdtn"), "the Cyrillic reading must win");
+        assert!(
+            ru.score("привет") > en.score("ghbdtn"),
+            "the Cyrillic reading must win"
+        );
     }
 
     #[test]

@@ -3,6 +3,7 @@ name = "accuracy"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+default-run = "accuracy"
 
 [dependencies]
 keymap = { path = "../../crates/keymap" }

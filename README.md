@@ -41,19 +41,20 @@ Both the language model and the thresholds are set by measurement, not taste:
 against a held-out split, so a change that sounds clever but loses accuracy has
 nowhere to hide.
 
-## Two rules that do not bend
+## Privacy & What We Don't Do
 
-**It never touches the network.** No update check, no telemetry, no crash
-reporting, no analytics. For a program that watches your keystrokes, the only
-convincing guarantee is one you can verify yourself with a firewall — not a
-promise in a README.
+For a program that watches your keystrokes, claiming to be secure is easy. Proving it is hard. Instead of telling you what we do, here is the verifiable list of what we **don't** do:
 
-**When in doubt, it does nothing.** Password fields, email addresses, URLs,
-file paths, anything containing a digit, capitalised words mid-sentence, code
-identifiers — all left alone. The keystroke buffer holds the current word
-only, in memory, capped, and is never written to disk. See
-[`crates/guards`](crates/guards/src/lib.rs), which exists as its own crate so
-this claim is one auditable file.
+1. **We don't touch the network.** No telemetry, no crash reporting, no analytics, no auto-updates. AltShift is entirely offline. Our CI pipeline actively scans the dependency tree and fails if any network crate (like `reqwest` or `curl`) is introduced.
+2. **We don't log your keystrokes.** The keystroke buffer only holds the *current* word in memory. It has a strict upper limit (so you can't type a novel into it). The moment you press Space or Enter, it clears.
+3. **We don't write keystrokes to disk.** The only thing AltShift writes to your disk is its configuration file (`altshift_settings.json`), which stores your enabled/disabled state, slider preferences, and application blacklist. You can view, edit, or delete it anytime.
+4. **We don't touch sensitive fields.** Passwords, email addresses, URLs, file paths, numbers, or capitalized words mid-sentence are strictly ignored. See exactly what we refuse to touch in **[`crates/guards`](crates/guards/src/lib.rs)**, which exists as its own isolated crate so this claim is just one easily auditable file.
+
+## Download / Releases
+
+**We do not compile the `.exe` files on our local machines.** Every release provided on the [Releases](https://github.com/AlperTuncOrtak/AltShift/releases) page is built entirely in the open by GitHub Actions. You can inspect the [build logs](https://github.com/AlperTuncOrtak/AltShift/actions) for any version to verify exactly which source code produced the installer.
+
+For a program that reads your keystrokes, knowing exactly where the binary came from is non-negotiable.
 
 ## Scope
 
@@ -68,10 +69,16 @@ anything on your screen.
 ## Build
 
 ```sh
-./fetch-wordlists.sh   # word lists are fetched, not committed
+./fetch-wordlists.sh   # required first: the desktop backends embed the models
 cargo test --workspace
-cargo run --release -p accuracy
+cargo run --release --bin accuracy   # accuracy
+cargo run --release --bin measure    # latency
 ```
+
+`fetch-wordlists.sh` is a build prerequisite, not an optional step. The shipped
+application embeds its language models rather than reading a `data/` directory
+on the user's machine, so the lists have to exist before the platform backends
+will compile.
 
 ## Layout
 
