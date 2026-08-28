@@ -16,6 +16,12 @@ static HELD_KEYS: Mutex<Vec<INPUT>> = Mutex::new(Vec::new());
 /// belirten atomik bayrak.
 static INJECTION_LOCK: AtomicBool = AtomicBool::new(false);
 
+/// Hook'un sisteme gerçekten kurulup kurulmadığı.
+///
+/// Kurulamazsa program açık görünür ama hiçbir tuşu görmez -- dışarıdan
+/// "çalışmıyor" ile ayırt edilemeyen bir durum.
+pub static HOOK_INSTALLED: AtomicBool = AtomicBool::new(false);
+
 use engine::{Buffer, Decision, Engine};
 use guards::Context;
 use keymap::{LayoutId, Stroke};
@@ -30,6 +36,12 @@ lazy_static::lazy_static! {
     pub static ref RECENT_LAYOUT: Mutex<Option<LayoutId>> = Mutex::new(None);
     /// Odak değişimini yakalamak için son görülen pencere.
     static ref LAST_HWND: Mutex<isize> = Mutex::new(0);
+    /// Son kararın insan tarafından okunabilir özeti.
+    ///
+    /// Arayüzde gösterilmek için: kullanıcı "çalışmıyor" dediğinde log
+    /// dosyasını bulmak zorunda kalmasın. Kelimenin kendisi değil, sadece
+    /// gerekçesi tutuluyor.
+    pub static ref LAST_DECISION: Mutex<String> = Mutex::new("henüz karar verilmedi".to_string());
     pub static ref ENGINE: Mutex<Engine> = Mutex::new(Engine::new());
     pub static ref BUFFER: Mutex<Buffer> = Mutex::new(Buffer::new());
 }
@@ -217,6 +229,11 @@ pub unsafe extern "system" fn keyboard_hook_proc(
                 // Kelimenin KENDİSİ asla loglanmıyor -- sadece uzunluğu ve
                 // kararın gerekçesi. Tuş dinleyen bir programın kullanıcı
                 // metnini diske yazması, yapmayacağız dediğimiz şeyin ta kendisi.
+                let outcome = match &decision {
+                    Decision::Correct(c) => format!("düzeltildi → {:?}", c.target_layout),
+                    Decision::Leave(Some(reason)) => format!("dokunulmadı: {reason:?}"),
+                    Decision::Leave(None) => "dokunulmadı: eşiğin altında".to_string(),
+                };
                 log::info!(
                     "word len={} layout={:?} available={:?} pwd={:?} blocked={} -> {}",
                     buf.len(),
@@ -224,11 +241,14 @@ pub unsafe extern "system" fn keyboard_hook_proc(
                     available,
                     ctx.is_password_field,
                     ctx.app_blocked,
-                    match &decision {
-                        Decision::Correct(c) => format!("CORRECT to {:?}", c.target_layout),
-                        Decision::Leave(Some(reason)) => format!("leave: {reason:?}"),
-                        Decision::Leave(None) => "leave: below threshold".to_string(),
-                    }
+                    outcome
+                );
+                *LAST_DECISION.lock().unwrap() = format!(
+                    "{} harf, {:?} düzeninde, şifre alanı={:?} → {}",
+                    buf.len(),
+                    current_layout,
+                    ctx.is_password_field,
+                    outcome
                 );
 
                 match decision {
@@ -302,6 +322,7 @@ pub fn run_hook_loop() -> Result<(), String> {
         let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0)
             .map_err(|e| format!("SetWindowsHookExW failed: {}", e))?;
 
+        HOOK_INSTALLED.store(true, Ordering::SeqCst);
         log::info!("keyboard hook installed");
 
         // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.

@@ -70,6 +70,60 @@ struct AppStats {
     total_corrections: usize,
 }
 
+/// Programın kendi durumu hakkında söyleyebilecekleri.
+///
+/// "Çalışmıyor" demek kolay, sebebini bulmak zordu: log dosyasının yerini
+/// bulmak, PowerShell açmak, çıktıyı okumak. Bunların hepsi kullanıcıdan
+/// beklenemeyecek şeyler ve her turu bir derleme-indirme-kurulum döngüsüne
+/// mal ediyordu. Aynı bilgi artık ayarlar ekranında.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Diagnostics {
+    version: String,
+    hook_installed: bool,
+    installed_layouts: Vec<String>,
+    last_decision: String,
+}
+
+#[tauri::command]
+fn get_diagnostics() -> Diagnostics {
+    let version = env!("CARGO_PKG_VERSION").to_string();
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::sync::atomic::Ordering;
+        Diagnostics {
+            version,
+            hook_installed: platform::hook::HOOK_INSTALLED.load(Ordering::SeqCst),
+            installed_layouts: platform::layout::get_installed_layouts()
+                .iter()
+                .map(|l| format!("{l:?}"))
+                .collect(),
+            last_decision: platform::hook::LAST_DECISION.lock().unwrap().clone(),
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Diagnostics {
+            version,
+            hook_installed: false,
+            installed_layouts: Vec::new(),
+            last_decision: "bu platformda klavye katmanı henüz yok".to_string(),
+        }
+    }
+}
+
+/// Pencereyi tepsiye indirir.
+///
+/// Arayüzdeki X düğmesi bunu Rust tarafından yapıyor, çünkü webview'dan
+/// `getCurrentWindow().hide()` çağrısı Tauri'nin izin sistemine takılıp
+/// sessizce hata veriyordu -- try-catch onu yutunca düğme hiçbir şey
+/// yapmıyormuş gibi görünüyordu.
+#[tauri::command]
+fn hide_to_tray(window: tauri::Window) {
+    let _ = window.hide();
+}
+
 #[tauri::command]
 fn get_stats() -> AppStats {
     use std::sync::atomic::Ordering;
@@ -91,7 +145,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             update_settings,
-            get_stats
+            get_stats,
+            get_diagnostics,
+            hide_to_tray
         ])
         .setup(|app| {
             // Logging is on in release too, not just debug. A keyboard hook

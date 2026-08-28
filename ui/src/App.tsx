@@ -1,7 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./index.css";
+
+// What the program can say about its own state. Exists because "it doesn't
+// work" was previously only answerable by finding a log file and opening
+// PowerShell -- neither of which a user should have to do.
+type Diagnostics = {
+  version: string;
+  hookInstalled: boolean;
+  installedLayouts: string[];
+  lastDecision: string;
+};
 
 type AppSettings = {
   enabled: boolean;
@@ -71,6 +80,7 @@ export default function App() {
   });
   const [newApp, setNewApp] = useState("");
   const [corrections, setCorrections] = useState(0);
+  const [diag, setDiag] = useState<Diagnostics | null>(null);
   const counterRef = useRef<HTMLSpanElement>(null);
 
   useEffect(() => {
@@ -85,8 +95,10 @@ export default function App() {
     };
 
     safeInvoke<AppSettings>("get_settings").then(s => s && setSettings(s));
+    safeInvoke<Diagnostics>("get_diagnostics").then(d => d && setDiag(d));
     
     const id = setInterval(() => {
+      safeInvoke<Diagnostics>("get_diagnostics").then(d => d && setDiag(d));
       safeInvoke<{ total_corrections: number }>("get_stats").then((s) => {
         if (s) {
           setCorrections((prev) => {
@@ -111,13 +123,11 @@ export default function App() {
     } catch(e) {}
   };
 
+  // Hiding goes through Rust rather than getCurrentWindow(): the webview call
+  // was being rejected by Tauri's capability system, and the try/catch around
+  // it swallowed the error, so the button looked like it did nothing at all.
   const handleClose = () => {
-    try {
-      const appWindow = getCurrentWindow();
-      appWindow.hide();
-    } catch(e) {
-      console.error(e);
-    }
+    invoke("hide_to_tray").catch(console.error);
   };
 
   const addApp = () => {
@@ -308,9 +318,38 @@ export default function App() {
           </div>
         </div>
 
+        {/* Status — the answer to "why isn't it doing anything?" */}
+        <div>
+          <div className="text-[11px] font-medium text-white/35 uppercase tracking-widest px-1 mb-1.5">Status</div>
+          <div className="fluent-card px-4 py-3 space-y-1.5 text-[12px]">
+            <div className="flex items-center justify-between">
+              <span className="text-white/45">Keyboard hook</span>
+              <span className={diag?.hookInstalled ? "text-[#5af]" : "text-[#f77]"}>
+                {diag?.hookInstalled ? "attached" : "not attached"}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-white/45">Layouts installed</span>
+              <span className={diag && diag.installedLayouts.length > 1 ? "text-white/70" : "text-[#f77]"}>
+                {diag?.installedLayouts.join(", ") || "—"}
+              </span>
+            </div>
+            {diag && diag.installedLayouts.length < 2 && (
+              <div className="text-[11px] text-[#f77]/80 leading-snug pt-0.5">
+                Only one layout is installed, so there is nothing to switch to.
+                Add a second keyboard in Windows settings.
+              </div>
+            )}
+            <div className="pt-1 border-t border-white/[0.06]">
+              <div className="text-white/45 mb-0.5">Last word</div>
+              <div className="text-white/70 leading-snug">{diag?.lastDecision || "—"}</div>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
         <div className="text-center text-[11px] text-white/20 pt-1">
-          No network · No telemetry · Open source
+          v{diag?.version ?? "?"} · No network · No telemetry · Open source
         </div>
       </div>
     </div>
