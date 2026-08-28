@@ -1,7 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import "./index.css";
+import { 
+  Search, Menu, ArrowLeft, Home, PlaySquare, Volume2, 
+  LayoutTemplate, Activity, Music, Lock, Settings, Info, ChevronRight, CheckCircle2 
+} from "lucide-react";
 
 type AppSettings = {
   enabled: boolean;
@@ -10,307 +13,170 @@ type AppSettings = {
   blacklist: string[];
 };
 
-// ── Fluent Toggle Switch ──────────────────────────────────────────────
-function FluentSwitch({
-  checked,
-  onChange,
-}: {
-  checked: boolean;
-  onChange: (v: boolean) => void;
-}) {
+async function safeInvoke<T>(cmd: string, args?: any): Promise<T | null> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (e) {
+    return null;
+  }
+}
+
+function SidebarItem({ icon: Icon, label, active, onClick }: any) {
   return (
-    <label className="fluent-switch">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className="track" />
-      <span className="thumb" />
-    </label>
+    <div 
+      onClick={onClick}
+      className={\lex items-center gap-3 px-3 py-2.5 rounded-md cursor-pointer transition-all relative \}
+    >
+      <Icon size={18} strokeWidth={active ? 2.5 : 2} className={active ? "text-[#5af]" : ""} />
+      <span className="text-[14px]">{label}</span>
+      {active && <div className="absolute left-0 w-1 h-4 bg-[#5af] rounded-r-full" />}
+    </div>
   );
 }
 
-// ── Fluent Slider ─────────────────────────────────────────────────────
-function FluentSlider({
-  value,
-  onChange,
-  onCommit,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  onCommit: (v: number) => void;
-}) {
+function Card({ icon: Icon, title, subtitle, badge, badgeColor }: any) {
   return (
-    <input
-      type="range"
-      min={0}
-      max={100}
-      value={value}
-      className="w-full h-1 rounded-full appearance-none cursor-pointer"
-      style={{
-        background: `linear-gradient(to right, hsl(213 100% 62%) ${value}%, rgba(255,255,255,0.15) ${value}%)`,
-        outline: "none",
-      }}
-      onChange={(e) => onChange(Number(e.target.value))}
-      onMouseUp={(e) => onCommit(Number((e.target as HTMLInputElement).value))}
-    />
+    <div className="fluent-card p-4 flex items-center justify-between cursor-pointer group hover:bg-white/[0.08] transition-colors">
+      <div className="flex items-center gap-4">
+        <Icon size={24} className="text-white/80 group-hover:text-white transition-colors" strokeWidth={1.5} />
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-[14px] text-white/90">{title}</span>
+            {badge && (
+              <span 
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none"
+                style={{ backgroundColor: badgeColor || "hsl(213 100% 62%)", color: "#fff" }}
+              >
+                {badge}
+              </span>
+            )}
+          </div>
+          <div className="text-[12px] text-white/50">{subtitle}</div>
+        </div>
+      </div>
+      <ChevronRight size={18} className="text-white/30 group-hover:text-white/60 transition-colors" />
+    </div>
   );
 }
 
-// ── Fluent Separator ──────────────────────────────────────────────────
-const Sep = () => <div className="h-px bg-white/[0.06] mx-4" />;
-
-// ── Main App ──────────────────────────────────────────────────────────
 export default function App() {
-  const [settings, setSettings] = useState<AppSettings>({
-    enabled: true,
-    defaultLayout: "us-qwerty",
-    aggressiveness: 65,
-    blacklist: [],
-  });
-  const [newApp, setNewApp] = useState("");
-  const [corrections, setCorrections] = useState(0);
-  const counterRef = useRef<HTMLSpanElement>(null);
-
+  const [activeTab, setActiveTab] = useState("Ana Sayfa");
+  
   useEffect(() => {
-    // Safe invoke that doesn't crash in standard browser
-    const safeInvoke = async <T,>(cmd: string, args?: any): Promise<T | null> => {
-      try {
-        return await invoke<T>(cmd, args);
-      } catch (e) {
-        console.error(`Invoke ${cmd} failed:`, e);
-        return null;
-      }
-    };
-
-    safeInvoke<AppSettings>("get_settings").then(s => s && setSettings(s));
-    
-    const id = setInterval(() => {
-      safeInvoke<{ total_corrections: number }>("get_stats").then((s) => {
-        if (s) {
-          setCorrections((prev) => {
-            if (s.total_corrections !== prev) {
-              counterRef.current?.classList.remove("pop");
-              void counterRef.current?.offsetWidth;
-              counterRef.current?.classList.add("pop");
-            }
-            return s.total_corrections;
-          });
-        }
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  const save = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => {
-    const updated = { ...settings, [key]: value };
-    setSettings(updated);
     try {
-      invoke("update_settings", { settings: updated }).catch(console.error);
-    } catch(e) {}
-  };
+      const appWindow = getCurrentWindow();
+      appWindow.show();
+    } catch(e) {
+      console.log("Tarayıcı modunda çalışıyor.");
+    }
+  }, []);
 
   const handleClose = () => {
     try {
-      const appWindow = getCurrentWindow();
-      appWindow.hide();
-    } catch(e) {
-      console.error(e);
-    }
-  };
-
-  const addApp = () => {
-    const app = newApp.trim().toLowerCase();
-    if (app && !settings.blacklist.includes(app)) {
-      save("blacklist", [...settings.blacklist, app]);
-      setNewApp("");
-    }
+      getCurrentWindow().hide();
+    } catch(e) {}
   };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden text-white/90">
-      {/* ── Title Bar (draggable) ── */}
-      <div
-        className="drag-region flex items-center justify-between px-4 pt-3 pb-2 shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      >
-        <div className="flex items-center gap-2.5">
-          {/* Logo mark */}
-          <div
-            className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold"
-            style={{ background: "hsl(213 100% 62%)" }}
-          >
-            AS
-          </div>
-          <span className="font-semibold text-[15px] tracking-tight">AltShift</span>
+    <div className="h-screen flex text-white/90 font-sans" style={{ background: "transparent" }}>
+      
+      {/* SIDEBAR */}
+      <div className="w-[280px] h-full flex flex-col pt-3 pb-4 border-r border-white/5 bg-[#141414]/90 backdrop-blur-xl relative">
+        {/* Back & Menu */}
+        <div className="drag-region px-5 pt-2 mb-6 flex flex-col gap-6" style={{ WebkitAppRegion: "drag" } as any}>
+          <ArrowLeft size={20} className="text-white/50 hover:text-white cursor-pointer" style={{ WebkitAppRegion: "no-drag" } as any} />
+          <Menu size={22} className="text-white/70 hover:text-white cursor-pointer" style={{ WebkitAppRegion: "no-drag" } as any} />
         </div>
 
-        <div className="flex items-center gap-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
-          {/* Status pill */}
-          <span
-            className="fluent-badge"
-            style={
-              settings.enabled
-                ? { color: "#5af", borderColor: "rgba(85,170,255,0.25)", background: "rgba(85,170,255,0.1)" }
-                : { color: "rgba(255,255,255,0.4)" }
-            }
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${settings.enabled ? "bg-[#5af] animate-pulse" : "bg-white/30"}`}
-            />
-            {settings.enabled ? "Active" : "Paused"}
-          </span>
+        {/* Navigation */}
+        <div className="flex-1 overflow-y-auto px-3 space-y-1">
+          <SidebarItem icon={Home} label="Ana Sayfa" active={activeTab === "Ana Sayfa"} onClick={() => setActiveTab("Ana Sayfa")} />
+          <SidebarItem icon={PlaySquare} label="Motor & Arayüz" active={activeTab === "Motor"} onClick={() => setActiveTab("Motor")} />
+          <SidebarItem icon={Volume2} label="Ses Açılır Penceresi" />
+          <SidebarItem icon={LayoutTemplate} label="Görev Çubuğu Widget" />
+          <SidebarItem icon={Activity} label="Görev Çubuğu Görselleştiricisi" />
+          <SidebarItem icon={Music} label="Sıradaki Açılır Penceresi" />
+          <SidebarItem icon={Lock} label="Kilitleme Tuşları" />
+          <SidebarItem icon={Settings} label="Sistem" />
+        </div>
 
-          {/* Window controls */}
-          <button
-            className="ml-2 w-7 h-7 rounded-md flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white/80 transition-colors text-[18px] leading-none"
-            onClick={handleClose}
-            title="Close to tray"
-          >
-            ×
-          </button>
+        {/* About */}
+        <div className="px-3 mt-auto">
+          <SidebarItem icon={Info} label="Hakkında" />
         </div>
       </div>
 
-      {/* ── Body (scrollable) ── */}
-      <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-3">
-
-        {/* Stats row */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="fluent-card px-4 py-3">
-            <div className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-1">Corrections</div>
-            <span ref={counterRef} className="text-2xl font-semibold tabular-nums">
-              {corrections.toLocaleString()}
-            </span>
+      {/* MAIN CONTENT */}
+      <div className="flex-1 flex flex-col h-full bg-[#1c1c1f]/95 relative overflow-hidden">
+        
+        {/* TITLE BAR */}
+        <div className="drag-region h-[48px] flex items-center justify-between px-4 shrink-0" style={{ WebkitAppRegion: "drag" } as any}>
+          <div className="flex items-center gap-3 w-[240px]">
+            <div className="w-6 h-6 rounded flex items-center justify-center text-[9px] font-bold" style={{ background: "hsl(213 100% 62%)" }}>AS</div>
+            <span className="font-semibold text-[13px]">AltShift</span>
           </div>
-          <div className="fluent-card px-4 py-3">
-            <div className="text-[11px] font-medium text-white/40 uppercase tracking-widest mb-1">Time Saved</div>
-            <span className="text-2xl font-semibold tabular-nums">
-              {Math.floor(corrections * 1.2)}s
-            </span>
+          
+          {/* Fake Search Bar */}
+          <div className="w-[320px] h-8 bg-white/5 hover:bg-white/10 border border-white/5 rounded-md flex items-center px-3 gap-2 transition-colors cursor-text" style={{ WebkitAppRegion: "no-drag" } as any}>
+            <Search size={14} className="text-white/40" />
+            <input 
+              type="text" 
+              placeholder="Ayarlarda ara" 
+              className="bg-transparent border-none outline-none text-[13px] w-full text-white placeholder-white/40"
+            />
+          </div>
+          
+          <div className="w-[240px] flex justify-end">
+            <div className="flex items-center" style={{ WebkitAppRegion: "no-drag" } as any}>
+              <button className="w-[46px] h-8 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white transition-colors text-[18px] leading-none mb-1">−</button>
+              <button className="w-[46px] h-8 flex items-center justify-center text-white/50 hover:bg-white/10 hover:text-white transition-colors text-[14px]">□</button>
+              <button className="w-[46px] h-8 flex items-center justify-center text-white/50 hover:bg-red-500 hover:text-white transition-colors text-[16px]" onClick={handleClose}>✕</button>
+            </div>
           </div>
         </div>
 
-        {/* Engine section */}
-        <div>
-          <div className="text-[11px] font-medium text-white/35 uppercase tracking-widest px-1 mb-1.5">Engine</div>
-          <div className="fluent-card overflow-hidden">
+        {/* SCROLLABLE BODY */}
+        <div className="flex-1 overflow-y-auto px-[50px] py-8">
+          <div className="flex items-baseline gap-3 mb-10">
+            <h1 className="text-[28px] font-semibold tracking-tight text-white">AltShift Ayarları</h1>
+            <span className="text-[14px] text-white/40 font-medium">v1.2.0</span>
+          </div>
 
-            {/* Master switch */}
-            <div className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors">
+          <h2 className="text-[24px] font-semibold mb-6 tracking-tight text-white">{activeTab}</h2>
+
+          {/* Banner Mockup */}
+          <div className="w-[380px] h-[140px] rounded-xl mb-10 overflow-hidden relative shadow-lg" style={{ background: "linear-gradient(135deg, #1f40aa, #6034e3)" }}>
+            <div className="absolute inset-0 flex items-center justify-center font-bold text-2xl text-white/40 shadow-inner">
+              AltShift Visual
+            </div>
+          </div>
+
+          <div className="flex items-center gap-14 mb-10 border-b border-white/[0.08] pb-8">
+            <div className="cursor-pointer group">
+              <div className="font-semibold text-[15px] mb-1 group-hover:text-white text-white/90 transition-colors">Güncellemeleri Görüntüle</div>
+              <div className="text-[13px] text-white/50">Yenilikleri öğrenin</div>
+            </div>
+            <div className="flex items-center gap-4">
+              <CheckCircle2 size={24} className="text-[#4cc26e]" strokeWidth={2.5} />
               <div>
-                <div className="text-[14px] font-medium">Auto-Correct</div>
-                <div className="text-[12px] text-white/45">Intercept & fix layout errors</div>
+                <div className="font-semibold text-[15px] mb-0.5 text-white/90">Güncel</div>
+                <div className="text-[12px] text-white/40">Son denetleme: 27.08.2026</div>
               </div>
-              <FluentSwitch checked={settings.enabled} onChange={(v) => save("enabled", v)} />
-            </div>
-
-            <Sep />
-
-            {/* Default layout */}
-            <div className="flex items-center justify-between px-4 py-3 hover:bg-white/[0.03] transition-colors">
-              <div>
-                <div className="text-[14px] font-medium">Default Layout</div>
-                <div className="text-[12px] text-white/45">Fallback when unknown</div>
-              </div>
-              <select
-                value={settings.defaultLayout}
-                onChange={(e) => save("defaultLayout", e.target.value)}
-                className="fluent-control text-[13px] font-mono px-2 py-1 text-white/80 cursor-pointer focus:outline-none"
-                style={{ minWidth: 110 }}
-              >
-                <option value="us-qwerty">US QWERTY</option>
-                <option value="ru-ycuken">RU YCUKEN</option>
-                <option value="de-qwertz">DE QWERTZ</option>
-                <option value="fr-azerty">FR AZERTY</option>
-              </select>
-            </div>
-
-            <Sep />
-
-            {/* Aggressiveness */}
-            <div className="px-4 py-3 hover:bg-white/[0.03] transition-colors space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-[14px] font-medium">Aggressiveness</div>
-                  <div className="text-[12px] text-white/45">Confidence threshold</div>
-                </div>
-                <span
-                  className="text-[13px] font-mono px-2 py-0.5 rounded-md border border-white/10 text-white/70"
-                  style={{ background: "rgba(255,255,255,0.06)" }}
-                >
-                  {settings.aggressiveness}%
-                </span>
-              </div>
-              <FluentSlider
-                value={settings.aggressiveness}
-                onChange={(v) => setSettings((s) => ({ ...s, aggressiveness: v }))}
-                onCommit={(v) => save("aggressiveness", v)}
-              />
             </div>
           </div>
-        </div>
 
-        {/* Blacklist section */}
-        <div>
-          <div className="text-[11px] font-medium text-white/35 uppercase tracking-widest px-1 mb-1.5">
-            Excluded Apps
+          <h3 className="font-semibold text-[14px] mb-4 text-white/90">Kontrol paneli</h3>
+          
+          <div className="grid grid-cols-2 gap-3 max-w-[850px]">
+            <Card icon={PlaySquare} title="Motor & Doğruluk" subtitle="Aktif" />
+            <Card icon={LayoutTemplate} title="Görev Çubuğu Widget" subtitle="Aktif" badge="PREMIUM" />
+            <Card icon={Volume2} title="Ses Açılır Penceresi" subtitle="Aktif" />
+            <Card icon={Activity} title="İstatistik Görselleştiricisi" subtitle="Devre Dışı" badge="BETA" badgeColor="#8E2DE2" />
+            <Card icon={Music} title="Kısayollar & İstisnalar" subtitle="Devre Dışı" />
+            <Card icon={Lock} title="Kilitleme Tuşları Açılır Penceresi" subtitle="Devre Dışı" />
+            <Card icon={Settings} title="Sistem" subtitle="Yapılandır" />
           </div>
-          <div className="fluent-card px-4 py-3 space-y-3">
-            <p className="text-[12px] text-white/45">
-              AltShift stays silent in these apps — passwords, games, IDEs.
-            </p>
 
-            {/* Add input */}
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="e.g. devenv.exe"
-                value={newApp}
-                onChange={(e) => setNewApp(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addApp()}
-                className="flex-1 fluent-control px-3 py-1.5 text-[13px] font-mono text-white/80 focus:outline-none placeholder:text-white/25"
-              />
-              <button
-                onClick={addApp}
-                className="fluent-control px-3 py-1.5 text-[13px] font-medium text-white/80 hover:text-white transition-colors"
-              >
-                Block
-              </button>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-1.5">
-              {settings.blacklist.map((app) => (
-                <div
-                  key={app}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-mono"
-                  style={{
-                    background: "rgba(255,80,80,0.08)",
-                    border: "1px solid rgba(255,80,80,0.18)",
-                    color: "rgba(255,140,140,0.9)",
-                  }}
-                >
-                  {app}
-                  <button
-                    onClick={() => save("blacklist", settings.blacklist.filter((a) => a !== app))}
-                    className="opacity-50 hover:opacity-100 transition-opacity leading-none"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {settings.blacklist.length === 0 && (
-                <span className="text-[12px] text-white/25 italic">None</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="text-center text-[11px] text-white/20 pt-1">
-          No network · No telemetry · Open source
         </div>
       </div>
     </div>

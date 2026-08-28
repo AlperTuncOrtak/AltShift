@@ -16,13 +16,24 @@ lazy_static! {
 }
 
 pub fn init_engine() {
-    let en_words = include_str!("../../../data/en.txt").lines().map(String::from);
-    let ru_words = include_str!("../../../data/ru.txt").lines().map(String::from);
+    let en_words = include_str!("../../../data/en.txt").lines().filter_map(|line| {
+            let (word, count) = line.trim().split_once(' ')?;
+            Some((word.to_string(), count.parse().unwrap_or(1)))
+        });
+    let ru_words = include_str!("../../../data/ru.txt").lines().filter_map(|line| {
+            let (word, count) = line.trim().split_once(' ')?;
+            Some((word.to_string(), count.parse().unwrap_or(1)))
+        });
+    let tr_words = include_str!("../../../data/tr.txt").lines().filter_map(|line| {
+            let (word, count) = line.trim().split_once(' ')?;
+            Some((word.to_string(), count.parse().unwrap_or(1)))
+        });
     
     let mut engine = ENGINE.lock().unwrap();
     *engine = Engine::new()
         .with_model(LayoutId::UsQwerty, lang::LanguageModel::train("en", en_words))
-        .with_model(LayoutId::RuYcuken, lang::LanguageModel::train("ru", ru_words));
+        .with_model(LayoutId::RuYcuken, lang::LanguageModel::train("ru", ru_words))
+        .with_model(LayoutId::TrQwerty, lang::LanguageModel::train("tr", tr_words));
     
     println!("AltShift Engine initialized with EN and RU models.");
 }

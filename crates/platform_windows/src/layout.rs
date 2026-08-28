@@ -56,6 +56,7 @@ pub fn switch_layout(hwnd: HWND, target: LayoutId) -> Result<(), String> {
     let lang_id: usize = match target {
         LayoutId::UsQwerty => 0x0409, // English (US)
         LayoutId::RuYcuken => 0x0419, // Russian
+        LayoutId::TrQwerty => 0x041F, // Turkish
     };
 
     // Sistemin kurulu HKL'lerini çek ve eşleşen tam HKL pointer'ını bul
