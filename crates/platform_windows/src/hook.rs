@@ -6,7 +6,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, GetMessageW, SetWindowsHookExW, UnhookWindowsHookEx,
-    HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL,
+    HHOOK, KBDLLHOOKSTRUCT, MSG, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
+    WM_RBUTTONDOWN,
 };
 
 /// Enjeksiyon sırasında (düzeltme yapılırken) basılan tuşların tutulduğu tampon.
@@ -334,6 +335,37 @@ pub unsafe extern "system" fn keyboard_hook_proc(
     CallNextHookEx(None, n_code, w_param, l_param)
 }
 
+/// Fare tıklamalarını dinler ve tamponu düşürür.
+///
+/// Tampon "imlecin hemen solundaki harfler" demek ve bu varsayım fare
+/// tıklamasıyla sessizce bozuluyor: kullanıcı başka bir yere tıklayıp yazmaya
+/// devam ettiğinde tampon eski kelimeyi hatırlamaya devam ediyor.
+///
+/// Sonucu görünür bir bozulma: düzeltme sırasında silinecek karakter sayısı
+/// tampondan geliyor, tampon şişkinse **önceki metin de siliniyor** ama yerine
+/// sadece o kelime yazılıyor. Kullanıcının gördüğü şey, silinip yerine bir şey
+/// gelmeyen bir boşluk.
+///
+/// Ok tuşlarını zaten yakalıyorduk; fare aynı işi yapan ve gözden kaçan yoldu.
+unsafe extern "system" fn mouse_hook_proc(
+    n_code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
+    if n_code >= 0
+        && matches!(
+            w_param.0 as u32,
+            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN
+        )
+    {
+        // Sadece tamponu düşür: bu callback de klavye hook'u kadar hızlı
+        // dönmek zorunda, burada karar verilmez.
+        BUFFER.lock().unwrap().clear(engine::Break::CaretMoved);
+        *RECENT_LAYOUT.lock().unwrap() = None;
+    }
+    CallNextHookEx(None, n_code, w_param, l_param)
+}
+
 /// Hook'u sisteme kaydeder ve Windows mesaj döngüsünü başlatır.
 /// Bu fonksiyon çağrıldığında mevcut thread sonsuz bir döngüye girer (bloklar).
 /// Bu nedenle ayrı bir thread içinde çalıştırılmalıdır.
@@ -344,8 +376,18 @@ pub fn run_hook_loop() -> Result<(), String> {
         let hook_id = SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_proc), None, 0)
             .map_err(|e| format!("SetWindowsHookExW failed: {}", e))?;
 
+        // Aynı thread, aynı mesaj döngüsü: iki hook da buradan besleniyor.
+        let mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_proc), None, 0).ok();
+        if mouse_hook.is_none() {
+            // Ölümcül değil ama tampon artık fare tıklamalarını kaçırır.
+            log::warn!("mouse hook could not be installed; buffer may go stale on click");
+        }
+
         HOOK_INSTALLED.store(true, Ordering::SeqCst);
-        log::info!("keyboard hook installed");
+        log::info!(
+            "keyboard hook installed (mouse hook: {})",
+            mouse_hook.is_some()
+        );
 
         // Windows Mesaj Döngüsü (GetMessage). Hook'un hayatta kalması için şart.
         let mut msg = MSG::default();
@@ -354,8 +396,11 @@ pub fn run_hook_loop() -> Result<(), String> {
             // sadece mesaj kuyruğunu boşaltmak (GetMessage) hook'un canlı kalmasını sağlar.
         }
 
-        // Döngü kırılırsa hook'u kaldır
+        // Döngü kırılırsa hook'ları kaldır
         let _ = UnhookWindowsHookEx(hook_id);
+        if let Some(h) = mouse_hook {
+            let _ = UnhookWindowsHookEx(h);
+        }
     }
 
     Ok(())
