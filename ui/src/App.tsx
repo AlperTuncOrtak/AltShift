@@ -8,6 +8,7 @@ import "./index.css";
 type Diagnostics = {
   version: string;
   hookInstalled: boolean;
+  decisions: number;
   installedLayouts: string[];
   lastDecision: string;
 };
@@ -340,6 +341,10 @@ export default function App() {
                 Add a second keyboard in Windows settings.
               </div>
             )}
+            <div className="flex items-center justify-between">
+              <span className="text-white/45">Words judged</span>
+              <span className="text-white/70 tabular-nums">{diag?.decisions ?? 0}</span>
+            </div>
             <div className="pt-1 border-t border-white/[0.06]">
               <div className="text-white/45 mb-0.5">Last word</div>
               <div className="text-white/70 leading-snug">{diag?.lastDecision || "—"}</div>

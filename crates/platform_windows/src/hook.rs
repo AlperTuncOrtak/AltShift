@@ -30,6 +30,15 @@ use keymap::{LayoutId, Stroke};
 pub static TOTAL_CORRECTIONS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
+/// Kaç kez karar verildiği. Düzeltme sayısından farklı: dokunulmayan kelimeler
+/// de sayılıyor.
+///
+/// Tanı için: bu sayaç kelime başına 1 artmalı. Tuş başına artıyorsa kelime
+/// sonu tespiti bozuk demektir ve bunu gözle takip etmek imkânsız -- panel
+/// saniyede bir yenilendiği için önceki kelimenin sonucu, o anki kelimenin
+/// ortasında yenilenmiş gibi görünüyor.
+pub static TOTAL_DECISIONS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 lazy_static::lazy_static! {
     /// Son kelimelerin oturduğu düzen. Karakter kanıtı kısa kelimelerde
     /// yetersiz kalıyor; "önceki kelimeler buradaydı" başka türden bir kanıt.
@@ -162,7 +171,19 @@ pub unsafe extern "system" fn keyboard_hook_proc(
         matches!(vk, 0x10..=0x12 | 0x14 | 0x5B..=0x5C | 0xA0..=0xA5)
     }
 
-    if hook_struct.flags.0 & windows::Win32::UI::Input::KeyboardAndMouse::KEYEVENTF_KEYUP.0 == 0 {
+    // Tuşun bırakılıp bırakılmadığı `LLKHF_UP` (0x80) ile okunur.
+    //
+    // Burada önce `KEYEVENTF_KEYUP` yazılmıştı: o sabit 0x02 ve `SendInput`
+    // için doğru, ama `KBDLLHOOKSTRUCT.flags` içinde 0x02 bambaşka bir şey
+    // demek -- "düşük bütünlük seviyesinden enjekte edildi". İki alanın
+    // sayıları çakıştığı için derleyici de uyarmıyor.
+    //
+    // Sonucu: koşul hem basma hem bırakma olayında doğru çıkıyordu. Her harf
+    // tampona iki kez giriyordu (`ghbdtn` yerine `gghhbbddttnn`) ve boşluk iki
+    // kez karar tetikliyordu -- ikincisi, birincinin temizlediği boş tamponu
+    // görüp "0 harf" diye logluyordu.
+    let is_key_up = hook_struct.flags.0 & windows::Win32::UI::WindowsAndMessaging::LLKHF_UP.0 != 0;
+    if !is_key_up {
         let vk = hook_struct.vkCode as u16;
         let mut buf = BUFFER.lock().unwrap();
 
@@ -229,6 +250,7 @@ pub unsafe extern "system" fn keyboard_hook_proc(
                 // Kelimenin KENDİSİ asla loglanmıyor -- sadece uzunluğu ve
                 // kararın gerekçesi. Tuş dinleyen bir programın kullanıcı
                 // metnini diske yazması, yapmayacağız dediğimiz şeyin ta kendisi.
+                TOTAL_DECISIONS.fetch_add(1, Ordering::SeqCst);
                 let outcome = match &decision {
                     Decision::Correct(c) => format!("düzeltildi → {:?}", c.target_layout),
                     Decision::Leave(Some(reason)) => format!("dokunulmadı: {reason:?}"),

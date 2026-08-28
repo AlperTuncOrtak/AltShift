@@ -81,6 +81,8 @@ struct AppStats {
 pub struct Diagnostics {
     version: String,
     hook_installed: bool,
+    /// Kelime başına 1 artmalı. Tuş başına artıyorsa kelime sonu tespiti bozuk.
+    decisions: usize,
     installed_layouts: Vec<String>,
     last_decision: String,
 }
@@ -95,6 +97,7 @@ fn get_diagnostics() -> Diagnostics {
         Diagnostics {
             version,
             hook_installed: platform::hook::HOOK_INSTALLED.load(Ordering::SeqCst),
+            decisions: platform::hook::TOTAL_DECISIONS.load(Ordering::SeqCst),
             installed_layouts: platform::layout::get_installed_layouts()
                 .iter()
                 .map(|l| format!("{l:?}"))
@@ -107,6 +110,7 @@ fn get_diagnostics() -> Diagnostics {
         Diagnostics {
             version,
             hook_installed: false,
+            decisions: 0,
             installed_layouts: Vec::new(),
             last_decision: "bu platformda klavye katmanı henüz yok".to_string(),
         }
