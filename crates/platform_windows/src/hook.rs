@@ -128,9 +128,12 @@ pub unsafe extern "system" fn keyboard_hook_proc(
             // Eğer boşluk tuşuna basıldıysa (kelime sonu)
             if hook_struct.vkCode as u16 == windows::Win32::UI::Input::KeyboardAndMouse::VK_SPACE.0
             {
-                // Şimdilik default Context ve LayoutId ile karar verelim
+                // Şimdilik default Context
                 let ctx = Context::default(); // TODO: get from active window
-                let current_layout = LayoutId::TrQwerty; // TODO: get from active window
+                
+                // Aktif pencerenin klavye düzenini OS'tan tespit et (fallback: ayarlardaki varsayılan)
+                let current_layout = crate::active_window::get_active_layout_id()
+                    .unwrap_or(LayoutId::UsQwerty); // TODO: get fallback from settings
 
                 let decision = {
                     let mut engine = ENGINE.lock().unwrap();

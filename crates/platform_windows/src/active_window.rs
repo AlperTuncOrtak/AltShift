@@ -5,6 +5,8 @@ use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
+use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyboardLayout;
+use keymap::LayoutId;
 
 use lazy_static::lazy_static;
 use std::sync::Mutex;
@@ -90,5 +92,26 @@ pub fn is_active_app_blocked() -> bool {
         bl.iter().any(|blocked| blocked == &exe_lower)
     } else {
         false
+    }
+}
+
+/// O anki aktif pencerenin klavye düzenini LayoutId olarak döndürür
+pub fn get_active_layout_id() -> Option<LayoutId> {
+    unsafe {
+        let hwnd = GetForegroundWindow();
+        if hwnd.0 == 0 {
+            return None;
+        }
+        let thread_id = GetWindowThreadProcessId(hwnd, None);
+        let hkl = GetKeyboardLayout(thread_id);
+        
+        let lang_id = (hkl.0 as usize) & 0xFFFF;
+        match lang_id {
+            0x0409 => Some(LayoutId::UsQwerty), // English (US)
+            0x0809 => Some(LayoutId::UsQwerty), // English (UK)
+            0x0419 => Some(LayoutId::RuYcuken), // Russian
+            0x041F => Some(LayoutId::TrQwerty), // Turkish
+            _ => None,
+        }
     }
 }
