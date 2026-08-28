@@ -17,15 +17,18 @@ pub enum LayoutId {
     UsQwerty,
     /// Russian ЙЦУКЕН.
     RuYcuken,
+    /// Turkish QWERTY.
+    TrQwerty,
 }
 
 impl LayoutId {
-    pub const ALL: [LayoutId; 2] = [LayoutId::UsQwerty, LayoutId::RuYcuken];
+    pub const ALL: [LayoutId; 3] = [LayoutId::UsQwerty, LayoutId::RuYcuken, LayoutId::TrQwerty];
 
     pub fn layout(self) -> &'static Layout {
         match self {
             LayoutId::UsQwerty => &US_QWERTY,
             LayoutId::RuYcuken => &RU_YCUKEN,
+            LayoutId::TrQwerty => &TR_QWERTY,
         }
     }
 }
@@ -171,3 +174,23 @@ mod tests {
         assert!(US_QWERTY.strokes_for("café").is_none());
     }
 }
+
+#[rustfmt::skip]
+pub static TR_QWERTY: Layout = Layout {
+    id: LayoutId::TrQwerty,
+    name: "Turkish (QWERTY)",
+    script: Script::Latin,
+    table: [
+        ['"','é'], ['1','!'], ['2','\''], ['3','^'], ['4','+'], ['5','%'], ['6','&'],
+        ['7','/'], ['8','('], ['9',')'], ['0','='], ['*','?'], ['-','_'],
+
+        ['q','Q'], ['w','W'], ['e','E'], ['r','R'], ['t','T'], ['y','Y'], ['u','U'],
+        ['ı','I'], ['o','O'], ['p','P'], ['ğ','Ğ'], ['ü','Ü'], [',',';'],
+
+        ['a','A'], ['s','S'], ['d','D'], ['f','F'], ['g','G'], ['h','H'], ['j','J'],
+        ['k','K'], ['l','L'], ['ş','Ş'], ['i','İ'],
+
+        ['z','Z'], ['x','X'], ['c','C'], ['v','V'], ['b','B'], ['n','N'], ['m','M'],
+        ['ö','Ö'], ['ç','Ç'], ['.',':'],
+    ],
+};

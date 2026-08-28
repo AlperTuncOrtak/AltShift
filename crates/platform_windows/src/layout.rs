@@ -38,7 +38,12 @@ pub fn get_installed_layouts() -> Vec<LayoutId> {
                         layouts.push(LayoutId::RuYcuken);
                     }
                 }
-                _ => {} // Desteklemediğimiz bir dil (Örn: Türkçe 0x041F)
+                0x041F => {
+                    if !layouts.contains(&LayoutId::TrQwerty) {
+                        layouts.push(LayoutId::TrQwerty);
+                    }
+                }
+                _ => {} // Tablosu olmayan bir dil: aday olarak hiç değerlendirilmez
             }
         }
 
@@ -63,7 +68,13 @@ pub fn get_current_layout(hwnd: HWND) -> Option<LayoutId> {
         let hkl = GetKeyboardLayout(thread_id);
         match hkl.0 as usize & 0xFFFF {
             0x0409 => Some(LayoutId::UsQwerty),
+            // UK English shares the letter block with US; only a few
+            // punctuation keys differ, so a word made of letters renders the
+            // same. Those keys would render wrong, but they are also the ones
+            // guards refuse to touch.
+            0x0809 => Some(LayoutId::UsQwerty),
             0x0419 => Some(LayoutId::RuYcuken),
+            0x041F => Some(LayoutId::TrQwerty),
             // Desteklemediğimiz bir düzen: None dönmek, motorun hiç
             // çalışmaması anlamına gelir. Türkçe klavyede yazarken araya
             // girmemesi tam olarak istediğimiz davranış.
@@ -82,6 +93,7 @@ pub fn switch_layout(hwnd: HWND, target: LayoutId) -> Result<(), String> {
     let lang_id: usize = match target {
         LayoutId::UsQwerty => 0x0409, // English (US)
         LayoutId::RuYcuken => 0x0419, // Russian
+        LayoutId::TrQwerty => 0x041F, // Turkish
     };
 
     // Sistemin kurulu HKL'lerini çek ve eşleşen tam HKL pointer'ını bul

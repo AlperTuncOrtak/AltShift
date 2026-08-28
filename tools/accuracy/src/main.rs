@@ -33,7 +33,12 @@ const FALSE_POSITIVE_BUDGET: f64 = 0.001; // 0.1%
 /// accumulate, short enough that plenty of runs start cold.
 const RUN_LEN: usize = 8;
 
-const AVAILABLE: [LayoutId; 2] = [LayoutId::UsQwerty, LayoutId::RuYcuken];
+// Turkish is here on purpose. It has a keycode table but no language model, so
+// the engine should skip it as a candidate -- and a user who happens to have a
+// Turkish keyboard installed should measure exactly like one who does not. That
+// is a claim worth checking rather than assuming, because a third Latin layout
+// is precisely where false positives would come from.
+const AVAILABLE: [LayoutId; 3] = [LayoutId::UsQwerty, LayoutId::RuYcuken, LayoutId::TrQwerty];
 
 fn main() {
     let en = match load("data/en.txt", Script::Latin) {
